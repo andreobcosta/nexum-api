@@ -1,0 +1,82 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Download, RefreshCw } from 'lucide-react';
+import { api } from '../utils/api';
+
+export default function ReportPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getReport(id).then(setReport).catch(console.error).finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return <div className="empty-state"><div className="spinner" style={{ margin: '0 auto' }} /></div>;
+  }
+
+  if (!report) {
+    return <div className="empty-state"><p>Relatório não encontrado.</p></div>;
+  }
+
+  // Simple markdown-to-html (headings, bold, lists, tables, hr)
+  function renderMarkdown(md) {
+    const lines = md.split('\n');
+    const html = lines.map((line) => {
+      if (line.startsWith('# ')) return `<h1 style="font-family:var(--font-display);font-size:22px;font-weight:600;margin:28px 0 12px;color:var(--green-dark)">${line.slice(2)}</h1>`;
+      if (line.startsWith('## ')) return `<h2 style="font-size:18px;font-weight:500;margin:24px 0 10px;color:var(--text)">${line.slice(3)}</h2>`;
+      if (line.startsWith('### ')) return `<h3 style="font-size:16px;font-weight:500;margin:20px 0 8px;color:var(--text)">${line.slice(4)}</h3>`;
+      if (line.startsWith('---')) return '<hr style="border:none;border-top:1px solid var(--border);margin:24px 0"/>';
+      if (line.startsWith('- ')) return `<div style="display:flex;gap:8px;margin:4px 0;padding-left:8px"><span style="color:var(--green)">•</span><span>${formatInline(line.slice(2))}</span></div>`;
+      if (line.startsWith('|')) return ''; // skip table rows (simplified)
+      if (line.trim() === '') return '<br/>';
+      return `<p style="margin:4px 0;line-height:1.7">${formatInline(line)}</p>`;
+    }).join('');
+    return html;
+  }
+
+  function formatInline(text) {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code style="background:var(--bg-surface);padding:1px 6px;border-radius:4px;font-size:13px">$1</code>');
+  }
+
+  return (
+    <div>
+      <button onClick={() => navigate(-1)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', color: 'var(--green)', fontSize: 14, marginBottom: 16, fontWeight: 500 }}>
+        <ArrowLeft style={{ width: 18, height: 18 }} /> Voltar
+      </button>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 500 }}>{report.full_name}</h2>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Versão {report.version} · {new Date(report.generated_at).toLocaleDateString('pt-BR')}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span className={`badge ${report.status === 'draft' ? 'badge-warning' : 'badge-success'}`}>
+              {report.status === 'draft' ? 'Rascunho' : 'Revisado'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {report.drive_file_id && (
+        <a href={`https://drive.google.com/file/d/${report.drive_file_id}/view`} target="_blank" rel="noopener"
+          className="btn btn-outline btn-block" style={{ marginBottom: 16, fontSize: 14 }}>
+          <Download style={{ width: 16, height: 16 }} /> Abrir no Google Drive
+        </a>
+      )}
+
+      <div className="card" style={{ fontSize: 14 }}>
+        <div dangerouslySetInnerHTML={{ __html: renderMarkdown(report.content_md || '') }} />
+      </div>
+    </div>
+  );
+}

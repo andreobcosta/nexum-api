@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  ran-clinic:
+    build: .
+    container_name: ran-clinic
+    restart: unless-stopped
+    volumes:
+      - /opt/ran-clinic/backend/data:/app/backend/data
+      - /opt/ran-clinic/backend/.env:/app/backend/.env
+      - /opt/ran-clinic/backend/prompts:/app/backend/prompts
+      - /opt/ran-clinic/backend/temp:/app/backend/temp
+      - /opt/ran-clinic/backend/routes:/app/backend/routes
+      - /opt/ran-clinic/frontend/build:/app/frontend/build
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.ranclinic.rule=Host(`app.patriziasantarem.com`)"
+      - traefik.http.routers.ranclinic.entrypoints=web,websecure
+      - traefik.http.routers.ranclinic.tls=true
+      - traefik.http.routers.ranclinic.tls.certresolver=mytlschallenge
+      - traefik.http.services.ranclinic.loadbalancer.server.port=3001
+    networks:
+      - n8n_default
+networks:
+  n8n_default:
+    external: true

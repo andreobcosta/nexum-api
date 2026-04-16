@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="theme-color" content="#0B3D2E"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<link rel="manifest" href="/manifest.json"/>
+<title>RAN Clinic</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#F6F5F0;color:#1a1a18}
+input,select,textarea,button{font-family:inherit;-webkit-appearance:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes slideUp{from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes recPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.18);opacity:.6}}
+::-webkit-scrollbar{width:0;height:0}
+.confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .2s}
+.confirm-box{background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:420px;animation:slideUp .25s ease-out}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const{useState,useEffect,useCallback,useRef,useMemo}=React;
+const API='/api';
+async function apiFetch(p,o={}){const r=await fetch(API+p,{headers:{'Content-Type':'application/json',...o.headers},...o});if(!r.ok){const e=await r.json().catch(()=>({error:r.statusText}));throw new Error(e.error||e.details||'Erro')}return r.json()}
+async function apiUpload(p,fd){const r=await fetch(API+p,{method:'POST',body:fd});if(!r.ok){const e=await r.json().catch(()=>({error:r.statusText}));throw new Error(e.error||e.details||'Erro')}return r.json()}
+async function apiDelete(p){const r=await fetch(API+p,{method:'DELETE'});if(!r.ok){const e=await r.json().catch(()=>({error:r.statusText}));throw new Error(e.error||'Erro')}return r.json()}
+
+const C={forest:'#0B3D2E',forest2:'#0E4D3A',forestMuted:'#1D9E75',sage:'#E1F5EE',sand:'#F6F5F0',sandMid:'#EDECE6',sandDark:'#E0DFD8',ink:'#1a1a18',inkMuted:'#6B6B65',inkLight:'#9C9C94',inkGhost:'#C5C5BC',white:'#FFF',coral:'#D85A30',coralLight:'#FAECE7',coralPale:'#FDF6F3',amber:'#BA7517',amberLight:'#FAEEDA',green:'#0F6E56',greenLight:'#E1F5EE',greenPale:'#F0FAF5',red:'#A32D2D',redLight:'#FCEBEB',blue:'#1A6DB5',blueLight:'#E6F1FB'};
+
+const ALL_CATS=[
+  {key:'anamnese',label:'Anamnese',required:true},
+  {key:'teste',label:'Testes',required:true},
+  {key:'sessao',label:'Sessoes',required:true},
+  {key:'relatorio',label:'Relatorios',required:false},
+  {key:'intervencao',label:'Intervencoes',required:false},
+  {key:'externo',label:'Docs. externos',required:false}
+];
+
+function useAudioRecorder(){
+  const[st,setSt]=useState('idle');const[dur,setDur]=useState(0);const[blob,setBlob]=useState(null);
+  const rec=useRef(null);const chunks=useRef([]);const tmr=useRef(null);const t0=useRef(null);
+  const start=useCallback(async()=>{const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});const m=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';const r=new MediaRecorder(s,{mimeType:m});chunks.current=[];r.ondataavailable=e=>{if(e.data.size>0)chunks.current.push(e.data)};r.onstop=()=>{setBlob(new Blob(chunks.current,{type:m}));s.getTracks().forEach(t=>t.stop());clearInterval(tmr.current);setSt('recorded')};rec.current=r;r.start(1000);t0.current=Date.now();setSt('recording');setBlob(null);setDur(0);tmr.current=setInterval(()=>setDur(Math.floor((Date.now()-t0.current)/1000)),500)},[]);
+  const stop=useCallback(()=>{if(rec.current&&st==='recording')rec.current.stop()},[st]);
+  const discard=useCallback(()=>{setBlob(null);setDur(0);setSt('idle')},[]);
+  const fmt=s=>{const h=Math.floor(s/3600);const m=Math.floor((s%3600)/60);const sc=s%60;return h>0?h+':'+String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0'):String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0')};
+  return{st,dur,fmt:fmt(dur),blob,start,stop,discard,sizeKB:blob?Math.round(blob.size/1024):0};
+}
+
+/* ══ SHARED ══ */
+function Header({title,subtitle,onBack,right}){
+  return <div style={{background:C.forest,padding:'14px 20px',paddingTop:'max(14px, env(safe-area-inset-top))',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,zIndex:50,flexShrink:0}}>
+    {onBack&&<button onClick={onBack} style={{background:'rgba(255,255,255,0.1)',border:'none',color:C.sage,width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0}}>←</button>}
+    <div style={{flex:1,minWidth:0}}>{subtitle&&<div style={{color:C.forestMuted,fontSize:11,fontWeight:500,textTransform:'uppercase',letterSpacing:'0.03em'}}>{subtitle}</div>}<div style={{color:C.white,fontSize:17,fontWeight:600,fontFamily:"'Playfair Display',serif",overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{title}</div></div>
+    {right}
+  </div>;
+}
+function Badge({type,text}){const m={ready:{bg:C.greenLight,fg:C.green},missing:{bg:C.amberLight,fg:C.amber},draft:{bg:C.blueLight,fg:C.blue}};const s=m[type]||{bg:C.sandMid,fg:C.inkMuted};return <span style={{background:s.bg,color:s.fg,fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:6}}>{text||(type==='ready'?'Pronto p/ RAN':type==='missing'?'Faltam dados':'Rascunho')}</span>}
+function Toast({message,type,onDismiss}){if(!message)return null;const bg=type==='error'?C.redLight:type==='success'?C.greenLight:C.amberLight;const fg=type==='error'?C.red:type==='success'?C.green:C.amber;return <div onClick={onDismiss} style={{position:'fixed',bottom:'max(24px, env(safe-area-inset-bottom))',left:16,right:16,zIndex:999,background:bg,color:fg,padding:'14px 20px',borderRadius:14,fontSize:14,fontWeight:600,cursor:'pointer',animation:'slideUp 0.3s ease-out'}}>{message}</div>}
+function Spinner({text,full}){const el=<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:full?0:60,gap:16,height:full?'100%':'auto'}}><div style={{width:36,height:36,border:'3px solid '+C.sandDark,borderTopColor:C.forest,borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>{text&&<div style={{color:C.inkMuted,fontSize:14,textAlign:'center'}}>{text}</div>}</div>;if(full)return <div style={{position:'fixed',inset:0,background:'rgba(246,245,240,0.92)',zIndex:200}}>{el}</div>;return el}
+function Card({children,onClick,style}){return <div onClick={onClick} style={{background:C.white,borderRadius:14,padding:'16px 18px',border:'1px solid '+C.sandDark,cursor:onClick?'pointer':'default',...style}}>{children}</div>}
+function Btn({children,onClick,disabled,variant,full,loading,small}){const s={primary:{bg:disabled?C.inkLight:C.forest,fg:C.white},secondary:{bg:C.white,fg:C.forest,border:'2px solid '+C.forest},danger:{bg:disabled?C.inkLight:C.red,fg:C.white},ghost:{bg:'transparent',fg:C.inkMuted,border:'1px solid '+C.sandDark}};const st=s[variant||'primary'];return <button onClick={onClick} disabled={disabled||loading} style={{padding:small?'8px 14px':'14px 20px',background:st.bg,color:st.fg,border:st.border||'none',borderRadius:small?10:14,fontSize:small?12:14,fontWeight:600,cursor:disabled?'default':'pointer',fontFamily:'inherit',width:full?'100%':'auto',display:'flex',alignItems:'center',justifyContent:'center',gap:8,opacity:disabled?.6:1}}>{loading&&<div style={{width:14,height:14,border:'2px solid '+st.fg+'44',borderTopColor:st.fg,borderRadius:'50%',animation:'spin .7s linear infinite'}}/>}{children}</button>}
+
+function Confirm({title,message,onConfirm,onCancel,danger}){
+  return <div className="confirm-overlay" onClick={onCancel}><div className="confirm-box" onClick={e=>e.stopPropagation()}>
+    <div style={{fontSize:17,fontWeight:700,marginBottom:8,color:C.ink}}>{title}</div>
+    <div style={{fontSize:14,color:C.inkMuted,lineHeight:1.6,marginBottom:24}}>{message}</div>
+    <div style={{display:'flex',gap:10}}>
+      <Btn onClick={onCancel} variant="ghost" full>Cancelar</Btn>
+      <Btn onClick={onConfirm} variant={danger?'danger':'primary'} full>{danger?'Remover':'Confirmar'}</Btn>
+    </div>
+  </div></div>;
+}
+
+/* ══ PAGE: PATIENT LIST ══ */
+function PatientListPage({onSelect,onNew,onImport}){
+  const[pts,setPts]=useState([]);const[loading,setLoading]=useState(true);const[search,setSearch]=useState('');const[filter,setFilter]=useState('all');
+  const load=useCallback(()=>{setLoading(true);apiFetch('/patients').then(setPts).catch(console.error).finally(()=>setLoading(false))},[]);
+  useEffect(()=>{load()},[load]);
+
+  const filtered=useMemo(()=>{let l=pts;if(search){const s=search.toLowerCase();l=l.filter(p=>p.full_name.toLowerCase().includes(s))}if(filter==='ready')l=l.filter(p=>p.ready_for_ran);if(filter==='pending')l=l.filter(p=>!p.ready_for_ran);return l},[pts,search,filter]);
+  const readyN=pts.filter(p=>p.ready_for_ran).length;
+  const pill=(k,lb,n)=><button onClick={()=>setFilter(k)} style={{padding:'7px 14px',borderRadius:20,fontSize:12,fontWeight:600,border:'none',cursor:'pointer',background:filter===k?C.forest:C.white,color:filter===k?C.white:C.inkMuted,whiteSpace:'nowrap'}}>{lb} ({n})</button>;
+
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}>
+    <Header title="RAN Clinic" subtitle="Patrizia Santarem" right={<div style={{display:'flex',gap:8}}>
+      <button onClick={onImport} style={{background:'rgba(255,255,255,0.1)',border:'none',color:C.sage,width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:14}} title="Importar CSV">↑</button>
+      <button onClick={onNew} style={{background:'rgba(255,255,255,0.15)',border:'none',color:C.sage,width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18}}>+</button>
+    </div>}/>
+    <div style={{flex:1,overflow:'auto',padding:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}}>
+        <div style={{background:C.white,borderRadius:12,padding:'12px',border:'1px solid '+C.sandDark,textAlign:'center'}}><div style={{fontSize:22,fontWeight:700,color:C.forest}}>{pts.length}</div><div style={{fontSize:11,color:C.inkMuted}}>Pacientes</div></div>
+        <div style={{background:C.white,borderRadius:12,padding:'12px',border:'1px solid '+C.sandDark,textAlign:'center'}}><div style={{fontSize:22,fontWeight:700,color:C.green}}>{readyN}</div><div style={{fontSize:11,color:C.inkMuted}}>Prontos</div></div>
+        <div style={{background:C.white,borderRadius:12,padding:'12px',border:'1px solid '+C.sandDark,textAlign:'center'}}><div style={{fontSize:22,fontWeight:700,color:C.coral}}>{pts.length-readyN}</div><div style={{fontSize:11,color:C.inkMuted}}>Pendentes</div></div>
+      </div>
+      <div style={{position:'relative',marginBottom:12}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar paciente..." style={{width:'100%',padding:'11px 14px 11px 14px',border:'1.5px solid '+C.sandDark,borderRadius:12,fontSize:14,background:C.white,outline:'none',color:C.ink}}/></div>
+      <div style={{display:'flex',gap:6,marginBottom:16,overflowX:'auto',paddingBottom:4}}>{pill('all','Todos',pts.length)}{pill('ready','Prontos',readyN)}{pill('pending','Pendentes',pts.length-readyN)}</div>
+      {loading?<Spinner text="Carregando..."/>:filtered.length===0?<div style={{textAlign:'center',padding:40,color:C.inkMuted}}>{search?'Nenhum resultado':'Nenhum paciente cadastrado'}</div>:
+      <div style={{display:'flex',flexDirection:'column',gap:10,paddingBottom:80}}>
+        {filtered.map(p=>{const tot=p.completeness.anamnese+p.completeness.teste+p.completeness.sessao+p.completeness.externo;
+        return <Card key={p.id} onClick={()=>onSelect(p.id)}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:15,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.full_name}</div>
+            <div style={{fontSize:12,color:C.inkMuted,marginTop:4}}>{p.age?p.age+' anos':''}{p.age&&p.grade?' · ':''}{p.grade||''}{tot>0?' · '+tot+' arq.':''}</div></div>
+            <span style={{color:C.inkGhost,fontSize:18}}>›</span>
+          </div>
+          <div style={{marginTop:10,display:'flex',gap:6}}><Badge type={p.ready_for_ran?'ready':'missing'}/>{p.completeness.reports>0&&<Badge type="draft" text={p.completeness.reports+' rel.'}/>}</div>
+        </Card>})}
+      </div>}
+    </div>
+  </div>;
+}
+
+/* ══ PAGE: IMPORT CSV ══ */
+function ImportPage({onBack}){
+  const[upl,setUpl]=useState(false);const[result,setResult]=useState(null);const[toast,setToast]=useState(null);const ref=useRef(null);
+  const handleFile=async f=>{if(!f)return;setUpl(true);try{const fd=new FormData();fd.append('file',f);const r=await apiUpload('/import/patients',fd);setResult(r);setToast({message:r.message,type:'success'})}catch(e){setToast({message:e.message,type:'error'})}finally{setUpl(false)}};
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}><Header title="Importar pacientes" subtitle="Arquivo CSV" onBack={onBack}/>
+    <div style={{flex:1,overflow:'auto',padding:20}}>
+      <Card><div style={{fontSize:14,color:C.inkMuted,lineHeight:1.7,marginBottom:16}}>Envie um arquivo <strong>.csv</strong> exportado do Corpora. Pacientes que ja existem no app serao ignorados — nenhum cadastro sera modificado.</div>
+      <button onClick={()=>ref.current?.click()} style={{width:'100%',padding:24,borderRadius:16,border:'2px dashed '+C.forestMuted,background:C.greenPale,cursor:'pointer',fontFamily:'inherit',textAlign:'center'}}>
+        <div style={{fontSize:16,fontWeight:600,color:C.green,marginBottom:4}}>Selecionar arquivo CSV</div>
+        <div style={{fontSize:12,color:C.inkMuted}}>Formato do Corpora</div>
+      </button>
+      <input ref={ref} type="file" accept=".csv,.xls,.xlsx" style={{display:'none'}} onChange={e=>handleFile(e.target.files[0])}/></Card>
+      {upl&&<Spinner text="Importando pacientes..."/>}
+      {result&&<Card style={{marginTop:16}}>
+        <div style={{fontSize:15,fontWeight:600,color:C.green,marginBottom:8}}>Importacao concluida</div>
+        <div style={{fontSize:14,color:C.inkMuted,lineHeight:1.8}}>
+          <div><strong>{result.added}</strong> paciente(s) adicionado(s)</div>
+          <div><strong>{result.skipped}</strong> ignorado(s) (ja existem)</div>
+          <div>Total no app: <strong>{result.total_now}</strong></div>
+        </div>
+      </Card>}
+    </div>
+    <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+  </div>;
+}
+
+/* ══ PAGE: NEW PATIENT ══ */
+function NewPatientPage({onBack,onCreated}){
+  const[form,setForm]=useState({full_name:'',birth_date:'',age:'',grade:'',handedness:'Destro',medications:'',guardians:''});
+  const[saving,setSaving]=useState(false);const[error,setError]=useState('');
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  useEffect(()=>{if(form.birth_date){const b=new Date(form.birth_date);const a=Math.floor((Date.now()-b.getTime())/(365.25*24*60*60*1000));if(a>0&&a<120)set('age',String(a))}},[form.birth_date]);
+  const save=async()=>{if(!form.full_name.trim())return setError('Nome e obrigatorio');setSaving(true);setError('');try{const r=await apiFetch('/patients',{method:'POST',body:JSON.stringify({...form,age:form.age?parseInt(form.age):null})});onCreated(r.id)}catch(e){setError(e.message)}finally{setSaving(false)}};
+  const inp={width:'100%',padding:'12px 14px',border:'1.5px solid '+C.sandDark,borderRadius:10,fontSize:15,background:C.white,outline:'none',color:C.ink};
+  const lb={fontSize:12,fontWeight:600,color:C.inkMuted,marginBottom:6,display:'block'};
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}><Header title="Novo paciente" onBack={onBack}/>
+    <div style={{flex:1,overflow:'auto',padding:20}}>
+      <div style={{display:'flex',flexDirection:'column',gap:16}}>
+        <div><label style={lb}>Nome completo *</label><input style={inp} value={form.full_name} onChange={e=>set('full_name',e.target.value)} placeholder="Ex: Kyan Alves de Lima"/></div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div><label style={lb}>Nascimento</label><input style={inp} type="date" value={form.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
+          <div><label style={lb}>Idade</label><input style={inp} type="number" value={form.age} onChange={e=>set('age',e.target.value)} placeholder="9"/></div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div><label style={lb}>Escolaridade</label><input style={inp} value={form.grade} onChange={e=>set('grade',e.target.value)} placeholder="4o ano"/></div>
+          <div><label style={lb}>Dominancia</label><select style={{...inp,cursor:'pointer'}} value={form.handedness} onChange={e=>set('handedness',e.target.value)}><option>Destro</option><option>Canhoto</option><option>Nao definida</option></select></div>
+        </div>
+        <div><label style={lb}>Medicamentos</label><input style={inp} value={form.medications} onChange={e=>set('medications',e.target.value)} placeholder="Ritalina, Rispiridona"/></div>
+        <div><label style={lb}>Responsaveis</label><input style={inp} value={form.guardians} onChange={e=>set('guardians',e.target.value)} placeholder="Nomes dos pais"/></div>
+        {error&&<div style={{color:C.red,fontSize:13,padding:'10px 14px',background:C.redLight,borderRadius:10}}>{error}</div>}
+        <Btn onClick={save} loading={saving} full>{saving?'Criando no Drive...':'Criar paciente'}</Btn>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ══ PAGE: PATIENT DETAIL ══ */
+function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onFiles}){
+  const[pt,setPt]=useState(null);const[loading,setLoading]=useState(true);const[gen,setGen]=useState(false);const[toast,setToast]=useState(null);
+  const[confirmDel,setConfirmDel]=useState(null);
+
+  const load=useCallback(()=>{setLoading(true);apiFetch('/patients/'+patientId).then(setPt).catch(console.error).finally(()=>setLoading(false))},[patientId]);
+  useEffect(()=>{load()},[load]);
+
+  const genReport=async()=>{setGen(true);try{const r=await apiFetch('/reports/generate/'+patientId,{method:'POST',body:JSON.stringify({force:true})});setToast({message:'Relatorio v'+r.version+' gerado!',type:'success'});load()}catch(e){setToast({message:e.message,type:'error'})}finally{setGen(false)}};
+
+  const deleteReport=async(id,ver)=>{try{await apiDelete('/reports/'+id);setToast({message:'Relatorio v'+ver+' removido',type:'success'});setConfirmDel(null);load()}catch(e){setToast({message:e.message,type:'error'})}};
+
+  if(loading||!pt)return <div style={{height:'100%',display:'flex',flexDirection:'column'}}><Header title="Carregando..." onBack={onBack}/><Spinner text="Buscando dados..."/></div>;
+
+  const folders=ALL_CATS.map(c=>{
+    var count=0;
+    if(c.key==='relatorio')count=pt.completeness.reports||0;
+    else if(c.key==='intervencao')count=(pt.files&&pt.files.intervencao?pt.files.intervencao.length:0);
+    else count=pt.completeness[c.key]||0;
+    return{...c,count};
+  });
+  const reqDone=folders.filter(f=>f.required&&f.count>0).length;
+  const pct=Math.round((reqDone/3)*100);
+
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}>
+    <Header title={pt.full_name} subtitle={(pt.grade||'')+(pt.age?' · '+pt.age+' anos':'')} onBack={onBack} right={<button onClick={()=>onEdit(patientId)} style={{background:'rgba(255,255,255,0.1)',border:'none',color:C.sage,width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:14}}>✎</button>}/>
+
+    <div style={{flex:1,overflow:'auto',padding:16}}>
+      <Card style={{marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><Badge type={pt.ready_for_ran?'ready':'missing'}/><span style={{fontSize:11,color:C.inkLight}}>{pct}%</span></div>
+        <div style={{height:6,background:C.sandMid,borderRadius:3,overflow:'hidden',marginBottom:10}}><div style={{height:'100%',background:pt.ready_for_ran?C.green:C.amber,borderRadius:3,width:pct+'%',transition:'width .5s'}}/></div>
+        {pt.medications&&<div style={{fontSize:12,color:C.inkMuted}}>Medicamentos: {pt.medications}</div>}
+      </Card>
+
+      <div style={{fontSize:13,fontWeight:600,color:C.inkMuted,marginBottom:10}}>Pastas do paciente</div>
+      <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
+        {folders.map(f=>{const has=f.count>0;
+          return <div key={f.key} onClick={()=>onFiles(patientId,f.key)} style={{display:'flex',alignItems:'center',gap:12,padding:'13px 16px',borderRadius:12,background:has?C.greenPale:C.white,border:'1px solid '+(has?C.green+'25':C.sandDark),cursor:'pointer'}}>
+            <div style={{width:32,height:32,borderRadius:8,background:has?C.greenLight:C.sandMid,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>{has?'✓':'📁'}</div>
+            <div style={{flex:1}}><div style={{fontSize:14,fontWeight:500,color:has?C.green:C.ink}}>{f.label}</div>{f.required&&!has&&<div style={{fontSize:11,color:C.amber}}>Obrigatorio</div>}</div>
+            <div style={{fontSize:14,fontWeight:700,color:has?C.green:C.inkGhost}}>{f.count}</div>
+            <span style={{color:C.inkGhost}}>›</span>
+          </div>
+        })}
+      </div>
+
+      <div style={{display:'flex',gap:10,marginBottom:20}}>
+        <Btn onClick={()=>onCapture(patientId)} variant="secondary" full>+ Enviar arquivo</Btn>
+        <Btn onClick={genReport} disabled={gen} full>{gen?'Gerando...':'Gerar RAN'}</Btn>
+      </div>
+
+      {pt.reports&&pt.reports.length>0&&<>
+        <div style={{fontSize:13,fontWeight:600,color:C.inkMuted,marginBottom:10}}>Relatorios</div>
+        {pt.reports.map(r=><Card key={r.id} style={{marginBottom:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{width:40,height:40,borderRadius:10,background:C.blueLight,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,color:C.blue}}>📄</div>
+            <div style={{flex:1,cursor:'pointer'}} onClick={()=>onViewReport(r.id,patientId)}>
+              <div style={{fontSize:14,fontWeight:600}}>RAN v{r.version}</div>
+              <div style={{fontSize:12,color:C.inkMuted}}>{new Date(r.generated_at).toLocaleDateString('pt-BR')}</div>
+            </div>
+            <button onClick={e=>{e.stopPropagation();setConfirmDel({id:r.id,ver:r.version})}} style={{background:C.redLight,border:'none',width:32,height:32,borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:C.red}}>✕</button>
+          </div>
+        </Card>)}
+      </>}
+    </div>
+
+    {gen&&<div style={{position:'fixed',inset:0,background:'rgba(11,61,46,0.9)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:200,gap:20}}>
+      <div style={{width:48,height:48,border:'3px solid '+C.forestMuted,borderTopColor:C.sage,borderRadius:'50%',animation:'spin .7s linear infinite'}}/>
+      <div style={{color:C.white,fontSize:17,fontWeight:600}}>Gerando relatorio...</div>
+      <div style={{color:C.sage,fontSize:13,textAlign:'center',padding:'0 40px'}}>Isso pode levar 1-2 minutos.</div>
+    </div>}
+    {confirmDel&&<Confirm title="Remover relatorio?" message={'Deseja remover o relatorio v'+confirmDel.ver+'? Esta acao nao pode ser desfeita.'} danger onConfirm={()=>deleteReport(confirmDel.id,confirmDel.ver)} onCancel={()=>setConfirmDel(null)}/>}
+    <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+  </div>;
+}
+
+/* ══ PAGE: FILES LIST (per category) ══ */
+function FilesListPage({patientId,category,onBack}){
+  const[files,setFiles]=useState([]);const[loading,setLoading]=useState(true);const[toast,setToast]=useState(null);const[confirmDel,setConfirmDel]=useState(null);
+  const catLabel=ALL_CATS.find(c=>c.key===category)?.label||category;
+
+  const load=useCallback(()=>{setLoading(true);apiFetch('/files/patient/'+patientId).then(r=>{setFiles(r.by_category[category]||[])}).catch(console.error).finally(()=>setLoading(false))},[patientId,category]);
+  useEffect(()=>{load()},[load]);
+
+  const deleteFile=async(id,name)=>{try{await apiDelete('/files/'+id);setToast({message:name+' removido',type:'success'});setConfirmDel(null);load()}catch(e){setToast({message:e.message,type:'error'})}};
+
+  const fmtSize=s=>{if(!s)return '';const kb=Math.round(s/1024);return kb>1024?Math.round(kb/1024)+'MB':kb+'KB'};
+  const fmtDate=d=>new Date(d).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'});
+  const typeIcon={audio:'🎙',image:'📷',document:'📄',note:'📝'};
+
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}>
+    <Header title={catLabel} subtitle="Arquivos" onBack={onBack}/>
+    <div style={{flex:1,overflow:'auto',padding:16}}>
+      {loading?<Spinner text="Carregando arquivos..."/>:files.length===0?
+        <div style={{textAlign:'center',padding:48,color:C.inkMuted}}><div style={{fontSize:32,marginBottom:12}}>📁</div><div style={{fontSize:15,fontWeight:600}}>Nenhum arquivo</div><div style={{fontSize:13,marginTop:4}}>Envie arquivos na tela do paciente</div></div>:
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {files.map(f=>{const meta=f.metadata?JSON.parse(f.metadata):{};
+            return <Card key={f.id}>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <div style={{width:40,height:40,borderRadius:10,background:C.sandMid,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}} dangerouslySetInnerHTML={{__html:typeIcon[f.file_type]||'📄'}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.original_name}</div>
+                  <div style={{fontSize:12,color:C.inkMuted,marginTop:2}}>{f.file_type}{meta.size?' · '+fmtSize(meta.size):''} · {fmtDate(f.created_at)}</div>
+                </div>
+                <button onClick={()=>setConfirmDel({id:f.id,name:f.original_name})} style={{background:C.redLight,border:'none',width:32,height:32,borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:C.red}}>✕</button>
+              </div>
+              {f.transcription&&<div style={{marginTop:10,padding:10,background:C.sandMid,borderRadius:8,fontSize:12,color:C.inkMuted,maxHeight:80,overflow:'hidden'}}>{f.transcription.substring(0,200)}...</div>}
+            </Card>
+          })}
+        </div>}
+    </div>
+    {confirmDel&&<Confirm title="Remover arquivo?" message={'Remover "'+confirmDel.name+'"? O arquivo permanece no Google Drive.'} danger onConfirm={()=>deleteFile(confirmDel.id,confirmDel.name)} onCancel={()=>setConfirmDel(null)}/>}
+    <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+  </div>;
+}
+
+/* ══ PAGE: CAPTURE ══ */
+function CapturePage({patientId,onBack,onDone}){
+  const[cat,setCat]=useState('anamnese');const[mode,setMode]=useState(null);const[upl,setUpl]=useState(false);const[toast,setToast]=useState(null);
+  const[noteText,setNoteText]=useState('');const[noteTitle,setNoteTitle]=useState('');
+  const[selectedFiles,setSelectedFiles]=useState([]);
+  const fileRef=useRef(null);const rec=useAudioRecorder();
+
+  const handleFiles=async()=>{
+    if(selectedFiles.length===0)return;setUpl(true);
+    try{const fd=new FormData();for(var i=0;i<selectedFiles.length;i++)fd.append('file',selectedFiles[i]);fd.append('patient_id',patientId);fd.append('category',cat);
+      const r=await apiUpload('/files/upload',fd);setSelectedFiles([]);
+      setToast({message:r.message||selectedFiles.length+' arquivo(s) enviado(s)',type:'success'});setTimeout(()=>onDone(),1500);
+    }catch(e){setToast({message:e.message,type:'error'})}finally{setUpl(false)}
+  };
+
+  const handleAudio=async()=>{if(!rec.blob)return;setUpl(true);try{const f=new File([rec.blob],'gravacao_'+cat+'_'+Date.now()+'.webm',{type:rec.blob.type});const fd=new FormData();fd.append('file',f);fd.append('patient_id',patientId);fd.append('category',cat);const r=await apiUpload('/files/upload',fd);rec.discard();setToast({message:r.message||'Audio salvo!',type:'success'});setTimeout(()=>onDone(),1500)}catch(e){setToast({message:e.message,type:'error'})}finally{setUpl(false)}};
+
+  const handleNote=async()=>{if(!noteText.trim())return;setUpl(true);try{await apiFetch('/files/note',{method:'POST',body:JSON.stringify({patient_id:patientId,category:cat,title:noteTitle||'nota_'+cat,content:noteText})});setToast({message:'Nota salva!',type:'success'});setTimeout(()=>onDone(),1500)}catch(e){setToast({message:e.message,type:'error'})}finally{setUpl(false)}};
+
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}>
+    <Header title="Enviar arquivo" subtitle="Selecione o tipo" onBack={()=>{if(rec.st==='recording')rec.stop();if(mode)setMode(null);else onBack()}}/>
+    <div style={{flex:1,overflow:'auto',padding:16}}>
+      <div style={{fontSize:12,fontWeight:600,color:C.inkMuted,marginBottom:8}}>Classificar como:</div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:24}}>
+        {ALL_CATS.map(c=><button key={c.key} onClick={()=>setCat(c.key)} style={{padding:'8px 14px',borderRadius:20,fontSize:12,fontWeight:600,border:'none',cursor:'pointer',background:cat===c.key?C.forest:C.white,color:cat===c.key?C.white:C.inkMuted}}>{c.label}</button>)}
+      </div>
+
+      {!mode&&<div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <button onClick={()=>setMode('audio')} style={{padding:24,borderRadius:20,border:'2px dashed '+C.coral,background:C.coralPale,cursor:'pointer',fontFamily:'inherit',textAlign:'center'}}>
+          <div style={{fontSize:28,marginBottom:8}}>🎙</div>
+          <div style={{fontSize:16,fontWeight:700,color:C.coral}}>Gravar audio</div>
+          <div style={{fontSize:12,color:C.inkMuted,marginTop:4}}>Ate 3 horas de gravacao</div>
+        </button>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <button onClick={()=>setMode('file')} style={{padding:20,borderRadius:14,border:'1px solid '+C.sandDark,background:C.white,cursor:'pointer',fontFamily:'inherit',textAlign:'center'}}>
+            <div style={{fontSize:22,marginBottom:6}}>📎</div>
+            <div style={{fontSize:14,fontWeight:600}}>Foto / PDF</div>
+            <div style={{fontSize:11,color:C.inkMuted,marginTop:2}}>Multiplos arquivos</div>
+          </button>
+          <button onClick={()=>setMode('note')} style={{padding:20,borderRadius:14,border:'1px solid '+C.sandDark,background:C.white,cursor:'pointer',fontFamily:'inherit',textAlign:'center'}}>
+            <div style={{fontSize:22,marginBottom:6}}>📝</div>
+            <div style={{fontSize:14,fontWeight:600}}>Nota de texto</div>
+            <div style={{fontSize:11,color:C.inkMuted,marginTop:2}}>Observacao clinica</div>
+          </button>
+        </div>
+      </div>}
+
+      {/* FILE PICKER - multiple */}
+      {mode==='file'&&<div>
+        <button onClick={()=>fileRef.current?.click()} style={{width:'100%',padding:24,borderRadius:16,border:'2px dashed '+C.forestMuted,background:C.greenPale,cursor:'pointer',fontFamily:'inherit',textAlign:'center',marginBottom:16}}>
+          <div style={{fontSize:16,fontWeight:600,color:C.green}}>Selecionar arquivos</div>
+          <div style={{fontSize:12,color:C.inkMuted,marginTop:4}}>Fotos, PDFs, documentos (multiplos)</div>
+        </button>
+        <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx" multiple capture="environment" style={{display:'none'}} onChange={e=>{const fl=Array.from(e.target.files);setSelectedFiles(prev=>[...prev,...fl])}}/>
+
+        {selectedFiles.length>0&&<div style={{marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:600,color:C.inkMuted,marginBottom:8}}>{selectedFiles.length} arquivo(s) selecionado(s):</div>
+          {selectedFiles.map((f,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:C.white,borderRadius:10,border:'1px solid '+C.sandDark,marginBottom:6}}>
+            <div style={{flex:1,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.name}</div>
+            <div style={{fontSize:11,color:C.inkMuted}}>{Math.round(f.size/1024)}KB</div>
+            <button onClick={()=>setSelectedFiles(prev=>prev.filter((_,j)=>j!==i))} style={{background:'none',border:'none',color:C.red,cursor:'pointer',fontSize:14}}>✕</button>
+          </div>)}
+          <div style={{display:'flex',gap:10,marginTop:12}}>
+            <Btn onClick={()=>{setSelectedFiles([]);setMode(null)}} variant="ghost" full>Cancelar</Btn>
+            <Btn onClick={handleFiles} loading={upl} full>Enviar {selectedFiles.length} arquivo(s)</Btn>
+          </div>
+        </div>}
+      </div>}
+
+      {/* AUDIO RECORDER */}
+      {mode==='audio'&&<div style={{background:C.white,borderRadius:24,padding:'40px 32px',border:'1px solid '+C.sandDark,textAlign:'center'}}>
+        {rec.st==='idle'&&<><div style={{fontSize:14,color:C.inkMuted,marginBottom:24}}>Toque para iniciar</div><button onClick={rec.start} style={{width:88,height:88,borderRadius:'50%',border:'none',background:C.coral,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto',fontSize:32,color:C.white}}>🎙</button><div style={{color:C.inkLight,fontSize:12,marginTop:16}}>Ate 3h de gravacao</div></>}
+        {rec.st==='recording'&&<><div style={{width:16,height:16,borderRadius:'50%',background:C.coral,margin:'0 auto 20px',animation:'recPulse 1.2s ease-in-out infinite'}}/><div style={{fontSize:42,fontWeight:700,color:C.coral,fontFamily:'monospace',marginBottom:8}}>{rec.fmt}</div><div style={{fontSize:12,color:C.inkMuted,marginBottom:24}}>{rec.sizeKB} KB</div><button onClick={rec.stop} style={{width:72,height:72,borderRadius:'50%',border:'4px solid '+C.coral,background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto'}}><div style={{width:24,height:24,borderRadius:6,background:C.coral}}/></button></>}
+        {rec.st==='recorded'&&<><div style={{fontSize:32,marginBottom:12,color:C.green}}>✓</div><div style={{fontSize:17,fontWeight:600,color:C.green,marginBottom:4}}>Gravacao pronta</div><div style={{fontSize:13,color:C.inkMuted,marginBottom:24}}>{rec.fmt} · {rec.sizeKB} KB</div><div style={{display:'flex',gap:12,justifyContent:'center'}}><Btn onClick={rec.discard} variant="ghost">Descartar</Btn><Btn onClick={handleAudio} loading={upl}>{upl?'Enviando...':'Salvar no Drive'}</Btn></div></>}
+      </div>}
+
+      {/* NOTE EDITOR */}
+      {mode==='note'&&<div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <input value={noteTitle} onChange={e=>setNoteTitle(e.target.value)} placeholder="Titulo (opcional)" style={{width:'100%',padding:'12px 14px',border:'1.5px solid '+C.sandDark,borderRadius:10,fontSize:15,background:C.white,outline:'none',color:C.ink}}/>
+        <textarea value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder="Observacoes clinicas..." rows={10} style={{width:'100%',padding:14,border:'1.5px solid '+C.sandDark,borderRadius:12,fontSize:15,background:C.white,outline:'none',color:C.ink,resize:'vertical',lineHeight:1.6}}/>
+        <div style={{display:'flex',gap:12}}><Btn onClick={()=>setMode(null)} variant="ghost" full>Cancelar</Btn><Btn onClick={handleNote} loading={upl} disabled={!noteText.trim()} full>Salvar nota</Btn></div>
+      </div>}
+      {upl&&mode!=='audio'&&mode!=='file'&&<Spinner text="Enviando..."/>}
+    </div>
+    <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+  </div>;
+}
+
+/* ══ PAGE: REPORT VIEW ══ */
+function ReportViewPage({reportId,patientId,onBack}){
+  const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);
+  useEffect(()=>{apiFetch('/reports/'+reportId).then(setRpt).catch(console.error).finally(()=>setLoading(false))},[reportId]);
+  if(loading)return <div style={{height:'100%',display:'flex',flexDirection:'column'}}><Header title="Relatorio" onBack={onBack}/><Spinner text="Carregando..."/></div>;
+  if(!rpt)return <div style={{height:'100%',display:'flex',flexDirection:'column'}}><Header title="Relatorio" onBack={onBack}/><div style={{padding:40,textAlign:'center',color:C.inkMuted}}>Nao encontrado</div></div>;
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}><Header title={'RAN v'+rpt.version} subtitle={rpt.full_name} onBack={onBack}/>
+    <div style={{flex:1,overflow:'auto',padding:16}}>
+      <Card style={{marginBottom:12}}><div style={{display:'flex',justifyContent:'space-between'}}><Badge type={rpt.status==='draft'?'draft':'ready'} text={rpt.status==='draft'?'Rascunho':'Finalizado'}/><span style={{fontSize:12,color:C.inkMuted}}>{new Date(rpt.generated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</span></div></Card>
+      <div style={{background:C.white,borderRadius:14,border:'1px solid '+C.sandDark,padding:'20px 18px',fontSize:14,lineHeight:1.8,whiteSpace:'pre-wrap',paddingBottom:40}}>{rpt.content_md||'Conteudo nao disponivel'}</div>
+    </div>
+  </div>;
+}
+
+/* ══ PAGE: EDIT PATIENT ══ */
+function EditPatientPage({patientId,onBack,onSaved}){
+  const[form,setForm]=useState(null);const[saving,setSaving]=useState(false);const[error,setError]=useState('');const[toast,setToast]=useState(null);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  useEffect(()=>{apiFetch('/patients/'+patientId).then(p=>setForm({full_name:p.full_name||'',birth_date:p.birth_date||'',age:p.age?String(p.age):'',grade:p.grade||'',handedness:p.handedness||'Destro',medications:p.medications||'',guardians:p.guardians||''})).catch(console.error)},[patientId]);
+  const save=async()=>{if(!form.full_name.trim())return setError('Nome e obrigatorio');setSaving(true);try{await apiFetch('/patients/'+patientId,{method:'PATCH',body:JSON.stringify({...form,age:form.age?parseInt(form.age):null})});setToast({message:'Atualizado!',type:'success'});setTimeout(()=>onSaved(),800)}catch(e){setError(e.message)}finally{setSaving(false)}};
+  if(!form)return <div style={{height:'100%'}}><Header title="Editar" onBack={onBack}/><Spinner/></div>;
+  const inp={width:'100%',padding:'12px 14px',border:'1.5px solid '+C.sandDark,borderRadius:10,fontSize:15,background:C.white,outline:'none',color:C.ink};
+  const lb={fontSize:12,fontWeight:600,color:C.inkMuted,marginBottom:6,display:'block'};
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}><Header title="Editar paciente" onBack={onBack}/>
+    <div style={{flex:1,overflow:'auto',padding:20}}>
+      <div style={{display:'flex',flexDirection:'column',gap:16}}>
+        <div><label style={lb}>Nome</label><input style={inp} value={form.full_name} onChange={e=>set('full_name',e.target.value)}/></div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div><label style={lb}>Nascimento</label><input style={inp} type="date" value={form.birth_date} onChange={e=>set('birth_date',e.target.value)}/></div>
+          <div><label style={lb}>Idade</label><input style={inp} type="number" value={form.age} onChange={e=>set('age',e.target.value)}/></div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div><label style={lb}>Escolaridade</label><input style={inp} value={form.grade} onChange={e=>set('grade',e.target.value)}/></div>
+          <div><label style={lb}>Dominancia</label><select style={{...inp,cursor:'pointer'}} value={form.handedness} onChange={e=>set('handedness',e.target.value)}><option>Destro</option><option>Canhoto</option><option>Nao definida</option></select></div>
+        </div>
+        <div><label style={lb}>Medicamentos</label><input style={inp} value={form.medications} onChange={e=>set('medications',e.target.value)}/></div>
+        <div><label style={lb}>Responsaveis</label><input style={inp} value={form.guardians} onChange={e=>set('guardians',e.target.value)}/></div>
+        {error&&<div style={{color:C.red,fontSize:13,padding:'10px 14px',background:C.redLight,borderRadius:10}}>{error}</div>}
+        <Btn onClick={save} loading={saving} full>Salvar</Btn>
+      </div>
+    </div>
+    <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+  </div>;
+}
+
+/* ══ APP ROUTER ══ */
+function App(){
+  const[page,setPage]=useState({name:'list'});
+  const nav=(name,params={})=>setPage({name,...params});
+  return <>
+    {page.name==='list'&&<PatientListPage onSelect={id=>nav('detail',{patientId:id})} onNew={()=>nav('new')} onImport={()=>nav('import')}/>}
+    {page.name==='import'&&<ImportPage onBack={()=>nav('list')}/>}
+    {page.name==='new'&&<NewPatientPage onBack={()=>nav('list')} onCreated={id=>nav('detail',{patientId:id})}/>}
+    {page.name==='detail'&&<PatientDetailPage patientId={page.patientId} onBack={()=>nav('list')} onCapture={id=>nav('capture',{patientId:id})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})} onFiles={(id,cat)=>nav('files',{patientId:id,category:cat})}/>}
+    {page.name==='files'&&<FilesListPage patientId={page.patientId} category={page.category} onBack={()=>nav('detail',{patientId:page.patientId})}/>}
+    {page.name==='capture'&&<CapturePage patientId={page.patientId} onBack={()=>nav('detail',{patientId:page.patientId})} onDone={()=>nav('detail',{patientId:page.patientId})}/>}
+    {page.name==='report'&&<ReportViewPage reportId={page.reportId} patientId={page.patientId} onBack={()=>nav('detail',{patientId:page.patientId})}/>}
+    {page.name==='edit'&&<EditPatientPage patientId={page.patientId} onBack={()=>nav('detail',{patientId:page.patientId})} onSaved={()=>nav('detail',{patientId:page.patientId})}/>}
+  </>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
