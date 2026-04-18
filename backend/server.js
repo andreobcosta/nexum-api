@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config({ path: '/app/backend/.env' });
+if (process.env.NODE_ENV !== 'production') { require('dotenv').config({ path: '/app/backend/.env' }); }
 
 const app = express();
 const PORT = process.env.PORT || 3001;
