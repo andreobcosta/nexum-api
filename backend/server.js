@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: '/app/backend/.env' });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -9,7 +9,6 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
 app.use(express.static(path.join(__dirname, '..', 'frontend', 'build')));
 
 app.use('/api/patients', require('./routes/patients'));
@@ -18,7 +17,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/import', require('./routes/import'));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', app: 'RAN Clinic', version: '2.0.0', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', app: 'Nexum API', version: '2.0.0', timestamp: new Date().toISOString() });
 });
 
 app.get('*', (req, res) => {
@@ -33,5 +32,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('\n  RAN Clinic v2.0 — Rodando em http://0.0.0.0:' + PORT + '\n');
+  console.log(`\n  Nexum API v2.0 — http://0.0.0.0:${PORT}\n`);
 });

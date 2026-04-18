@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-const { getDb } = require('../db/connection');
+const { getDb } = require('../db/firestore');
 const drive = require('../services/drive');
 
 const upload = multer({
@@ -12,43 +12,43 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 }
 });
 
-// POST /api/files/upload — Upload one or multiple files
+// POST /api/files/upload
 router.post('/upload', upload.array('file', 20), async (req, res) => {
-  var results = [];
-  var errors = [];
-
+  const results = [];
+  const errors = [];
   try {
-    var patient_id = req.body.patient_id;
-    var category = req.body.category;
+    const { patient_id, category } = req.body;
     if (!patient_id || !category || !req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'patient_id, category e pelo menos um arquivo sao obrigatorios' });
+      return res.status(400).json({ error: 'patient_id, category e pelo menos um arquivo são obrigatórios' });
     }
-    var db = getDb();
-    var patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(patient_id);
-    if (!patient) return res.status(404).json({ error: 'Paciente nao encontrado' });
+    const db = getDb();
+    const patientDoc = await db.collection('patients').doc(patient_id).get();
+    if (!patientDoc.exists) return res.status(404).json({ error: 'Paciente não encontrado' });
+    const patient = patientDoc.data();
     if (!patient.drive_folder_id) return res.status(400).json({ error: 'Paciente sem pasta no Drive' });
+    const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
 
-    var subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
-
-    for (var i = 0; i < req.files.length; i++) {
-      var file = req.files[i];
+    for (const file of req.files) {
       try {
-        var fileId = uuidv4();
-        var mimeType = file.mimetype;
-        var originalName = file.originalname;
-        var isAudio = mimeType.startsWith('audio/') || mimeType === 'video/webm';
-        var isImage = mimeType.startsWith('image/');
-        var fileType = isAudio ? 'audio' : isImage ? 'image' : 'document';
-        var fileSize = file.size;
-
-        var driveFile = await drive.uploadFile(file.path, originalName, mimeType, subfolderId);
-
-        db.prepare("INSERT INTO files (id, patient_id, original_name, file_type, category, drive_file_id, drive_folder_id, metadata, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'uploaded')").run(
-          fileId, patient_id, originalName, fileType, category, driveFile.id, subfolderId,
-          JSON.stringify({ size: fileSize, mimeType: mimeType })
-        );
-
-        results.push({ id: fileId, name: originalName, type: fileType, drive_id: driveFile.id });
+        const fileId = uuidv4();
+        const isAudio = file.mimetype.startsWith('audio/') || file.mimetype === 'video/webm';
+        const isImage = file.mimetype.startsWith('image/');
+        const fileType = isAudio ? 'audio' : isImage ? 'image' : 'document';
+        const driveFile = await drive.uploadFile(file.path, file.originalname, file.mimetype, subfolderId);
+        const now = new Date().toISOString();
+        await db.collection('patients').doc(patient_id).collection('files').doc(fileId).set({
+          patient_id,
+          original_name: file.originalname,
+          file_type: fileType,
+          category,
+          drive_file_id: driveFile.id,
+          drive_folder_id: subfolderId,
+          transcription: null,
+          metadata: JSON.stringify({ size: file.size, mimeType: file.mimetype }),
+          status: 'uploaded',
+          created_at: now
+        });
+        results.push({ id: fileId, name: file.originalname, type: fileType, drive_id: driveFile.id });
       } catch (fileErr) {
         errors.push({ name: file.originalname, error: fileErr.message });
       } finally {
@@ -56,18 +56,21 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
       }
     }
 
-    db.prepare("UPDATE patients SET updated_at = datetime('now') WHERE id = ?").run(patient_id);
-    db.prepare('INSERT INTO activity_log (patient_id, action, details) VALUES (?, ?, ?)').run(
-      patient_id, 'files_uploaded', JSON.stringify({ count: results.length, category: category })
-    );
+    const now = new Date().toISOString();
+    await db.collection('patients').doc(patient_id).update({ updated_at: now });
+    await db.collection('activity_log').add({
+      patient_id, action: 'files_uploaded',
+      details: JSON.stringify({ count: results.length, category }),
+      created_at: now
+    });
 
     res.status(201).json({
-      message: results.length + ' arquivo(s) enviado(s)' + (errors.length > 0 ? ', ' + errors.length + ' erro(s)' : ''),
+      message: `${results.length} arquivo(s) enviado(s)${errors.length > 0 ? `, ${errors.length} erro(s)` : ''}`,
       uploaded: results,
-      errors: errors
+      errors
     });
   } catch (err) {
-    console.error('Upload error:', err);
+    console.error(err);
     res.status(500).json({ error: 'Erro ao processar arquivo', details: err.message });
   }
 });
@@ -75,59 +78,72 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
 // POST /api/files/note
 router.post('/note', async (req, res) => {
   try {
-    var patient_id = req.body.patient_id;
-    var category = req.body.category;
-    var title = req.body.title;
-    var content = req.body.content;
+    const { patient_id, category, title, content } = req.body;
     if (!patient_id || !category || !content) {
-      return res.status(400).json({ error: 'patient_id, category e content sao obrigatorios' });
+      return res.status(400).json({ error: 'patient_id, category e content são obrigatórios' });
     }
-    var db = getDb();
-    var patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(patient_id);
-    if (!patient) return res.status(404).json({ error: 'Paciente nao encontrado' });
-
-    var fileId = uuidv4();
-    var fileName = (title || 'nota') + '_' + new Date().toISOString().slice(0, 10) + '.txt';
-    var subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
-    var buffer = Buffer.from(content, 'utf-8');
-    var driveFile = await drive.uploadBuffer(buffer, fileName, 'text/plain', subfolderId);
-
-    db.prepare("INSERT INTO files (id, patient_id, original_name, file_type, category, drive_file_id, drive_folder_id, transcription, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'uploaded')").run(
-      fileId, patient_id, fileName, 'note', category, driveFile.id, subfolderId, content
-    );
-    db.prepare("UPDATE patients SET updated_at = datetime('now') WHERE id = ?").run(patient_id);
-    res.status(201).json({ id: fileId, message: 'Nota salva com sucesso', file_name: fileName, category: category });
+    const db = getDb();
+    const patientDoc = await db.collection('patients').doc(patient_id).get();
+    if (!patientDoc.exists) return res.status(404).json({ error: 'Paciente não encontrado' });
+    const patient = patientDoc.data();
+    const fileId = uuidv4();
+    const fileName = `${title || 'nota'}_${new Date().toISOString().slice(0, 10)}.txt`;
+    const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
+    const buffer = Buffer.from(content, 'utf-8');
+    const driveFile = await drive.uploadBuffer(buffer, fileName, 'text/plain', subfolderId);
+    const now = new Date().toISOString();
+    await db.collection('patients').doc(patient_id).collection('files').doc(fileId).set({
+      patient_id, original_name: fileName, file_type: 'note',
+      category, drive_file_id: driveFile.id, drive_folder_id: subfolderId,
+      transcription: content, status: 'uploaded', created_at: now
+    });
+    await db.collection('patients').doc(patient_id).update({ updated_at: now });
+    res.status(201).json({ id: fileId, message: 'Nota salva com sucesso', file_name: fileName, category });
   } catch (err) {
-    console.error('Note error:', err);
+    console.error(err);
     res.status(500).json({ error: 'Erro ao salvar nota', details: err.message });
   }
 });
 
-// GET /api/files/patient/:patient_id — List all files grouped by category
-router.get('/patient/:patient_id', (req, res) => {
-  var db = getDb();
-  var files = db.prepare('SELECT * FROM files WHERE patient_id = ? ORDER BY category, created_at DESC').all(req.params.patient_id);
-  var byCategory = {};
-  for (var i = 0; i < files.length; i++) {
-    if (!byCategory[files[i].category]) byCategory[files[i].category] = [];
-    byCategory[files[i].category].push(files[i]);
+// GET /api/files/patient/:patient_id
+router.get('/patient/:patient_id', async (req, res) => {
+  try {
+    const db = getDb();
+    const snap = await db.collection('patients').doc(req.params.patient_id).collection('files').orderBy('created_at', 'desc').get();
+    const files = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const byCategory = {};
+    for (const f of files) {
+      if (!byCategory[f.category]) byCategory[f.category] = [];
+      byCategory[f.category].push(f);
+    }
+    res.json({ files, by_category: byCategory, total: files.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao listar arquivos', details: err.message });
   }
-  res.json({ files: files, by_category: byCategory, total: files.length });
 });
 
-// DELETE /api/files/:id — Delete a file from DB (keeps in Drive)
-router.delete('/:id', (req, res) => {
-  var db = getDb();
-  var file = db.prepare('SELECT * FROM files WHERE id = ?').get(req.params.id);
-  if (!file) return res.status(404).json({ error: 'Arquivo nao encontrado' });
-
-  db.prepare('DELETE FROM files WHERE id = ?').run(req.params.id);
-  db.prepare("UPDATE patients SET updated_at = datetime('now') WHERE id = ?").run(file.patient_id);
-  db.prepare('INSERT INTO activity_log (patient_id, action, details) VALUES (?, ?, ?)').run(
-    file.patient_id, 'file_deleted', JSON.stringify({ name: file.original_name, category: file.category })
-  );
-
-  res.json({ message: 'Arquivo removido', name: file.original_name });
+// DELETE /api/files/:patient_id/:file_id
+router.delete('/:patient_id/:file_id', async (req, res) => {
+  try {
+    const db = getDb();
+    const ref = db.collection('patients').doc(req.params.patient_id).collection('files').doc(req.params.file_id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Arquivo não encontrado' });
+    const file = doc.data();
+    await ref.delete();
+    const now = new Date().toISOString();
+    await db.collection('patients').doc(req.params.patient_id).update({ updated_at: now });
+    await db.collection('activity_log').add({
+      patient_id: req.params.patient_id, action: 'file_deleted',
+      details: JSON.stringify({ name: file.original_name, category: file.category }),
+      created_at: now
+    });
+    res.json({ message: 'Arquivo removido', name: file.original_name });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao remover arquivo', details: err.message });
+  }
 });
 
 module.exports = router;

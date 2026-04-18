@@ -1,21 +1,8 @@
-FROM node:20-alpine
-
+FROM node:20-slim
 WORKDIR /app
-
-# Backend dependencies
-COPY backend/package.json backend/
+COPY backend/package.json ./backend/
 RUN cd backend && npm install --production
-
-# Copy all code
-COPY backend/ backend/
-COPY frontend/ frontend/
-
-# Create necessary directories
-RUN mkdir -p backend/data backend/temp backend/prompts
-
-# Initialize database
-RUN cd backend && node db/init.js
-
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
 EXPOSE 3001
-
 CMD ["node", "backend/server.js"]

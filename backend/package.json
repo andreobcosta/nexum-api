@@ -1,20 +1,20 @@
 {
-  "name": "ran-clinic-backend",
-  "version": "1.0.0",
-  "description": "Backend API for RAN Clinic - Neuropsychopedagogical Assessment Reports",
+  "name": "nexum-api",
+  "version": "2.0.0",
+  "description": "Nexum — Plataforma de gestão clínica com IA",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
-    "db:init": "node db/init.js"
+    "dev": "node --watch server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "multer": "^1.4.5-lts.1",
-    "better-sqlite3": "^11.0.0",
+    "@google-cloud/firestore": "^7.9.0",
     "googleapis": "^130.0.0",
     "dotenv": "^16.4.5",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "@anthropic-ai/sdk": "^0.20.0"
   }
 }
