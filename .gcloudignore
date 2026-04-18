@@ -1,0 +1,13 @@
+.git
+.gitignore
+node_modules/
+backend/.env
+backend/data/
+backend/temp/
+backend/nexum-service-account.json
+backend/package-lock.json
+backend/migrate.js
+*.log
+*.db
+*.db-shm
+*.db-wal
