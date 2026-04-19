@@ -15,9 +15,17 @@ app.use('/api/patients', require('./routes/patients'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/import', require('./routes/import'));
+app.use('/api/transcribe', require('./routes/transcribe'));
+app.use('/api/costs', require('./routes/costs'));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', app: 'Nexum API', version: '2.0.0', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    app: 'Nexum API',
+    version: '2.0.0',
+    commit: process.env.DEPLOY_SHA || 'local',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get('*', (req, res) => {
@@ -32,5 +40,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  Nexum API v2.0 — http://0.0.0.0:${PORT}\n`);
+  console.log(`\n  Nexum API v2.0 — http://0.0.0.0:${PORT} — commit: ${process.env.DEPLOY_SHA || 'local'}\n`);
 });
