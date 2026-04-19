@@ -52,15 +52,35 @@ Regras de extração:
 
 NÃO interprete os dados — apenas extraia e organize. A interpretação é feita por outro agente.`;
 
-  const userContent = [
-    {
+  // Imagens usam tipo 'image', PDFs usam tipo 'document'
+  const isImage = IMAGE_MIME_TYPES.includes(mimeType);
+  const isPdf = PDF_MIME_TYPES.includes(mimeType);
+
+  let contentBlock;
+  if (isImage) {
+    contentBlock = {
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: mimeType,
+        data: contentBase64
+      }
+    };
+  } else if (isPdf) {
+    contentBlock = {
       type: 'document',
       source: {
         type: 'base64',
-        media_type: mimeType === 'application/pdf' ? 'application/pdf' : mimeType,
+        media_type: 'application/pdf',
         data: contentBase64
       }
-    },
+    };
+  } else {
+    return null; // Tipo não suportado
+  }
+
+  const userContent = [
+    contentBlock,
     {
       type: 'text',
       text: `Extraia todo o conteúdo relevante deste arquivo: "${fileName}". Organize o conteúdo de forma estruturada e legível.`
@@ -157,6 +177,8 @@ async function processDataPackage(rawDataPackage) {
         // Caso 3: PDF ou imagem — extrai via Claude vision
         if (file.content && needsVisionExtraction(file.type)) {
           console.log(`[PDF-Extractor] Extraindo: ${file.name} (${file.type})`);
+          // Delay entre extrações para respeitar rate limit da API
+          await new Promise(r => setTimeout(r, 1500));
           const result = await extractTextFromFile(file.content, file.type, file.name);
 
           if (result && result.text && result.text.trim()) {

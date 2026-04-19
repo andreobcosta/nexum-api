@@ -314,6 +314,12 @@ async function generateRAN(systemPromptRAN, patientInfo, rawCollectedData, onPro
   log('pipeline', `Arquivos processados: ${extractionMeta.files_processed} | Ignorados: ${extractionMeta.files_skipped}`);
   extractionMeta.log.forEach(entry => console.log('[PRÉ-PROCESSADOR] ' + entry));
 
+  // Aguarda 3s após extração para respeitar rate limit antes do Analítico
+  if (extractionMeta.files_processed > 0) {
+    log('pipeline', 'Aguardando rate limit após extração de documentos...');
+    await new Promise(r => setTimeout(r, 3000));
+  }
+
   // Etapa 1: Análise clínica profunda
   log('pipeline', 'Etapa 1/3 — Agente Analítico (Sonnet)');
   const { dossie, cost: costAnalitico } = await agentAnalytico(patientInfo, processedData, log);
