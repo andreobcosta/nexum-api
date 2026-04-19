@@ -175,8 +175,15 @@ async function collectPatientData(patientFolderId) {
   const completeness = await getPatientCompleteness(patientFolderId);
   const allData = {};
 
+  // Pastas excluídas do pipeline de análise — não são input clínico
+  const EXCLUDED_FOLDERS = ['04 - Relatórios'];
+
   for (const [folderName, info] of Object.entries(completeness)) {
     if (info.count === 0) continue;
+    if (EXCLUDED_FOLDERS.includes(folderName)) {
+      console.log(`[Drive] Ignorando pasta de saída: ${folderName}`);
+      continue;
+    }
 
     allData[folderName] = [];
     for (const file of info.files) {

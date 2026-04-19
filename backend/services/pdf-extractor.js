@@ -87,44 +87,57 @@ NÃO interprete os dados — apenas extraia e organize. A interpretação é fei
     }
   ];
 
-  try {
-    const res = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: MODEL_SONNET,
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userContent }]
-      })
-    });
+  // Retry com backoff exponencial para rate limit
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: MODEL_SONNET,
+          max_tokens: 4000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userContent }]
+        })
+      });
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error(`[PDF-Extractor] Erro na API: ${res.status} — ${err}`);
-      return null;
+      if (res.status === 429) {
+        const waitMs = attempt * 15000; // 15s, 30s, 45s
+        console.warn(`[PDF-Extractor] Rate limit — tentativa ${attempt}/${maxRetries} — aguardando ${waitMs/1000}s...`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.error(`[PDF-Extractor] Erro na API: ${res.status} — ${err}`);
+        return null;
+      }
+
+      const data = await res.json();
+      const text = data.content
+        .filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('\n');
+
+      const usage = data.usage || {};
+      const cost = ((usage.input_tokens || 0) * 3.00 + (usage.output_tokens || 0) * 15.00) / 1_000_000;
+
+      console.log(`[PDF-Extractor] ${fileName} — ${text.length} chars extraídos — $${cost.toFixed(4)}`);
+      return { text, cost };
+
+    } catch (err) {
+      console.error(`[PDF-Extractor] Erro ao extrair ${fileName} (tentativa ${attempt}):`, err.message);
+      if (attempt === maxRetries) return null;
+      await new Promise(r => setTimeout(r, 5000));
     }
-
-    const data = await res.json();
-    const text = data.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n');
-
-    const usage = data.usage || {};
-    const cost = ((usage.input_tokens || 0) * 3.00 + (usage.output_tokens || 0) * 15.00) / 1_000_000;
-
-    console.log(`[PDF-Extractor] ${fileName} — ${text.length} chars extraídos — $${cost.toFixed(4)}`);
-    return { text, cost };
-
-  } catch (err) {
-    console.error(`[PDF-Extractor] Erro ao extrair ${fileName}:`, err.message);
-    return null;
   }
+  return null;
 }
 
 // Processa um pacote de dados do paciente
@@ -178,7 +191,7 @@ async function processDataPackage(rawDataPackage) {
         if (file.content && needsVisionExtraction(file.type)) {
           console.log(`[PDF-Extractor] Extraindo: ${file.name} (${file.type})`);
           // Delay entre extrações para respeitar rate limit da API
-          await new Promise(r => setTimeout(r, 1500));
+          await new Promise(r => setTimeout(r, 3000));
           const result = await extractTextFromFile(file.content, file.type, file.name);
 
           if (result && result.text && result.text.trim()) {
