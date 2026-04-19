@@ -6,11 +6,54 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db/firestore');
 const drive = require('../services/drive');
+const { transcribeAudio } = require('../services/transcription');
 
 const upload = multer({
   dest: path.join(__dirname, '..', 'temp'),
   limits: { fileSize: 500 * 1024 * 1024 }
 });
+
+// Transcreve áudio em background após upload
+async function transcribeInBackground(patient_id, fileId, driveFileId, subfolderId, originalName, mimeType) {
+  const db = getDb();
+  const fileRef = db.collection('patients').doc(patient_id).collection('files').doc(fileId);
+  let tempPath = null;
+  try {
+    console.log('[AUTO-TRANSCRIÇÃO] Iniciando para', originalName);
+    await fileRef.update({ status: 'transcribing' });
+
+    const buffer = await drive.downloadFile(driveFileId);
+    tempPath = path.join(__dirname, '..', 'temp', 'transcribe_' + uuidv4());
+    fs.writeFileSync(tempPath, buffer);
+
+    const transcription = await transcribeAudio(tempPath, mimeType, originalName);
+    const now = new Date().toISOString();
+
+    await fileRef.update({ transcription, status: 'transcribed', transcribed_at: now });
+
+    // Salva .txt no Drive
+    try {
+      const txtName = originalName.replace(/\.[^.]+$/, '') + '_transcricao.txt';
+      const txtBuffer = Buffer.from('TRANSCRICAO — ' + originalName + '\nGerada em: ' + now + '\n\n' + transcription, 'utf-8');
+      await drive.uploadBuffer(txtBuffer, txtName, 'text/plain', subfolderId);
+    } catch (e) {
+      console.warn('[AUTO-TRANSCRIÇÃO] Nao salvou .txt no Drive:', e.message);
+    }
+
+    await db.collection('activity_log').add({
+      patient_id, action: 'file_transcribed',
+      details: JSON.stringify({ file_id: fileId, name: originalName, auto: true }),
+      created_at: new Date().toISOString()
+    });
+
+    console.log('[AUTO-TRANSCRIÇÃO] Concluída para', originalName);
+  } catch (err) {
+    console.error('[AUTO-TRANSCRIÇÃO] Erro em', originalName, ':', err.message);
+    try { await fileRef.update({ status: 'transcription_failed' }); } catch (_) {}
+  } finally {
+    if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+  }
+}
 
 // POST /api/files/upload
 router.post('/upload', upload.array('file', 20), async (req, res) => {
@@ -29,13 +72,16 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
     const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
 
     for (const file of req.files) {
+      let savedPath = file.path; // guarda para transcrição background
       try {
         const fileId = uuidv4();
         const isAudio = file.mimetype.startsWith('audio/') || file.mimetype === 'video/webm';
         const isImage = file.mimetype.startsWith('image/');
         const fileType = isAudio ? 'audio' : isImage ? 'image' : 'document';
+
         const driveFile = await drive.uploadFile(file.path, file.originalname, file.mimetype, subfolderId);
         const now = new Date().toISOString();
+
         await db.collection('patients').doc(patient_id).collection('files').doc(fileId).set({
           patient_id,
           original_name: file.originalname,
@@ -45,14 +91,35 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
           drive_folder_id: subfolderId,
           transcription: null,
           metadata: JSON.stringify({ size: file.size, mimeType: file.mimetype }),
-          status: 'uploaded',
+          status: isAudio ? 'pending_transcription' : 'uploaded',
           created_at: now
         });
-        results.push({ id: fileId, name: file.originalname, type: fileType, drive_id: driveFile.id });
+
+        results.push({
+          id: fileId,
+          name: file.originalname,
+          type: fileType,
+          drive_id: driveFile.id,
+          transcribing: isAudio
+        });
+
+        // Transcrição automática em background para áudios
+        if (isAudio) {
+          // Copia o arquivo antes de deletar
+          const bgPath = file.path + '_bg';
+          fs.copyFileSync(file.path, bgPath);
+          transcribeInBackground(patient_id, fileId, driveFile.id, subfolderId, file.originalname, file.mimetype)
+            .catch(e => console.error('[AUTO-TRANSCRIÇÃO] Falha silenciosa:', e.message));
+          savedPath = bgPath; // não deleta o original ainda
+        }
+
       } catch (fileErr) {
         errors.push({ name: file.originalname, error: fileErr.message });
       } finally {
         if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        if (savedPath && savedPath !== file.path && fs.existsSync(savedPath) && !savedPath.endsWith('_bg')) {
+          fs.unlinkSync(savedPath);
+        }
       }
     }
 
@@ -64,8 +131,9 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
       created_at: now
     });
 
+    const hasAudio = results.some(r => r.transcribing);
     res.status(201).json({
-      message: `${results.length} arquivo(s) enviado(s)${errors.length > 0 ? `, ${errors.length} erro(s)` : ''}`,
+      message: `${results.length} arquivo(s) enviado(s)${hasAudio ? ' — áudio(s) sendo transcritos em background' : ''}${errors.length > 0 ? `, ${errors.length} erro(s)` : ''}`,
       uploaded: results,
       errors
     });
@@ -87,7 +155,7 @@ router.post('/note', async (req, res) => {
     if (!patientDoc.exists) return res.status(404).json({ error: 'Paciente não encontrado' });
     const patient = patientDoc.data();
     const fileId = uuidv4();
-    const fileName = `${title || 'nota'}_${new Date().toISOString().slice(0, 10)}.txt`;
+    const fileName = (title || 'nota') + '_' + new Date().toISOString().slice(0, 10) + '.txt';
     const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
     const buffer = Buffer.from(content, 'utf-8');
     const driveFile = await drive.uploadBuffer(buffer, fileName, 'text/plain', subfolderId);
