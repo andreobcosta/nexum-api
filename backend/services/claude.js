@@ -2,7 +2,6 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL_SONNET = 'claude-sonnet-4-20250514';
 const MODEL_HAIKU  = 'claude-haiku-4-5-20251001';
 
-// Preços por milhão de tokens (USD) — atualizar se a Anthropic mudar
 const PRICING = {
   [MODEL_SONNET]: { input: 3.00, output: 15.00 },
   [MODEL_HAIKU]:  { input: 0.80, output: 4.00 }
@@ -17,7 +16,6 @@ function calcCost(model, inputTokens, outputTokens) {
   };
 }
 
-// Chamada base — retorna { text, cost }
 async function callClaude(systemPrompt, userMessage, maxTokens = 16000, model = MODEL_SONNET) {
   const res = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
@@ -39,139 +37,316 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 16000, model = 
   return { text, cost };
 }
 
-function prepareDataPackage(patientInfo, collectedData) {
+// Monta pacote de dados já processado (transcrições + textos extraídos de PDFs)
+// para envio ao Agente Analítico
+function buildAnalyticsInput(patientInfo, processedData) {
   const sections = [];
-  for (const [folderName, files] of Object.entries(collectedData)) {
+  const filesRead = [];
+
+  for (const [folderName, files] of Object.entries(processedData)) {
     if (!files || files.length === 0) continue;
-    sections.push('\n## Pasta: ' + folderName);
+    sections.push('\n## ' + folderName);
+
     for (const file of files) {
-      sections.push('\n### Arquivo: ' + file.name + ' (' + file.type + ')');
-      if (file.transcription) {
-        sections.push('[TRANSCRICAO DO AUDIO]\n' + file.transcription);
-      } else if (file.type && (file.type.includes('text') || file.type.includes('markdown'))) {
-        sections.push(Buffer.from(file.content, 'base64').toString('utf-8'));
+      sections.push('\n### ' + file.name + ' [' + file.type + ']');
+      if (file.content && file.content.trim()) {
+        sections.push(file.content);
+        filesRead.push(file.name + ' (' + file.type + ')');
       } else {
-        sections.push('[Arquivo: ' + file.name + ' — ' + Math.round((file.size || 0) / 1024) + 'KB]');
+        sections.push('[ARQUIVO SEM CONTEÚDO LEGÍVEL]');
       }
     }
   }
-  const cadastro = '## Dados cadastrais:\n- Nome: ' + patientInfo.full_name +
-    '\n- Nascimento: ' + (patientInfo.birth_date || '[NAO INFORMADO]') +
-    '\n- Idade: ' + (patientInfo.age || '[NAO INFORMADO]') + ' anos' +
-    '\n- Escolaridade: ' + (patientInfo.grade || '[NAO INFORMADO]') +
-    '\n- Dominancia: ' + (patientInfo.handedness || '[NAO INFORMADO]') +
-    '\n- Medicamentos: ' + (patientInfo.medications || 'Nenhum') +
-    '\n- Responsaveis: ' + (patientInfo.guardians || '[NAO INFORMADO]') +
-    '\n- Data: ' + new Date().toLocaleDateString('pt-BR') +
-    '\n- Local: Uberlandia-MG';
-  return { cadastro, sections: sections.join('\n') };
+
+  const cadastro = [
+    '## Dados cadastrais do paciente:',
+    '- Nome completo: ' + patientInfo.full_name,
+    '- Data de nascimento: ' + (patientInfo.birth_date || '[NÃO INFORMADO]'),
+    '- Idade: ' + (patientInfo.age || '[NÃO INFORMADO]') + ' anos',
+    '- Escolaridade: ' + (patientInfo.grade || '[NÃO INFORMADO]'),
+    '- Dominância manual: ' + (patientInfo.handedness || '[NÃO INFORMADO]'),
+    '- Medicamentos em uso: ' + (patientInfo.medications || 'Nenhum informado'),
+    '- Responsáveis: ' + (patientInfo.guardians || '[NÃO INFORMADO]'),
+    '- Data da avaliação: ' + new Date().toLocaleDateString('pt-BR'),
+    '- Local: Uberlândia-MG'
+  ].join('\n');
+
+  return { cadastro, sections: sections.join('\n'), filesRead };
 }
 
-// ── AGENTE ANALÍTICO — Haiku
-async function agentAnalytico(patientInfo, collectedData, onProgress) {
-  onProgress?.('analitico', 'Agente Analitico iniciado — lendo documentos...');
-  const { cadastro, sections } = prepareDataPackage(patientInfo, collectedData);
-  const systemPrompt = `Voce e o Agente Analitico especialista em neuropsicopedagogia. Analise os documentos e produza APENAS um JSON valido com esta estrutura exata:
-{"dados_cadastrais":"resumo","fontes_analisadas":[],"dados_quantitativos":{},"padroes_comportamentais":{},"inconsistencias":[],"hipoteses_sustentadas":[],"hipoteses_descartadas":[],"pontos_fortes":[],"lacunas":[],"orientacao_para_redator":"sintese"}
-Responda APENAS com o JSON, sem texto adicional.`;
-  const userMessage = 'Analise:\n\n' + cadastro + '\n\n## Documentos:\n' + sections;
-  onProgress?.('analitico', 'Agente Analitico processando instrumentos...');
-  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 4000, MODEL_HAIKU);
+// ── AGENTE ANALÍTICO — Sonnet com contexto clínico completo
+// Responsabilidade: interpretar instrumentos, cruzar fontes, produzir dossiê robusto
+async function agentAnalytico(patientInfo, processedData, onProgress) {
+  onProgress?.('analitico', 'Agente Analítico iniciado — analisando documentos clínicos...');
+
+  const { cadastro, sections, filesRead } = buildAnalyticsInput(patientInfo, processedData);
+
+  const systemPrompt = `Você é o Agente Analítico do sistema Nexum, especialista em neuropsicopedagogia clínica com domínio completo de:
+
+- DSM-5 e CID-11 (critérios diagnósticos de TDAH, TEA, transtornos de aprendizagem)
+- ETDAH: escala de escores INVERTIDOS — "Superior" indica MAIOR comprometimento. Fatores: RE (Regulação Emocional), HI (Hiperatividade/Impulsividade), CA (Comportamento Adaptativo), A (Atenção). Percentis: ≤24=Inferior, 25-74=Médio, 75-94=Superior, ≥95=Muito Superior
+- CARS: sem autismo <30 / leve-moderado 30-36,5 / grave ≥37. Pontuações 27-30 exigem cautela — TDAH pode inflar o escore
+- TDE-2: analisa Leitura (tempo + acertos), Escrita (tipos de erro: CFG, RC, IL, ENP) e Aritmética (estratégias: D=dedos, M=mental, RV=representação visual). Classificação por ano escolar
+- Consciência Fonológica: 8 níveis (A=Rimas até H=Inversão Silábica). Níveis G e H dependem de funções executivas — dificuldade nesses níveis em TDAH não indica déficit fonológico primário
+- Lateralidade: homogênea (típico), cruzada (risco visoespacial), mista/indefinida (imaturidade neurológica)
+- Funções executivas: controle inibitório, memória de trabalho, flexibilidade cognitiva, planejamento, monitoramento
+
+Sua função é analisar TODOS os documentos do paciente e produzir um dossiê analítico estruturado em JSON.
+
+Regras:
+1. Extraia TODOS os dados quantitativos (pontuações, percentis, classificações) com precisão
+2. Normalize linguagem coloquial das transcrições para termos técnicos
+3. Separe fato de opinião — relatos dos pais devem ser identificados como tal
+4. Detecte inconsistências entre fontes e registre ambas as perspectivas
+5. Identifique hipóteses sustentadas pelos dados E hipóteses descartadas com argumentação
+6. Mapeie potencialidades e fatores protetivos — nunca foque só em dificuldades
+7. Sinalize lacunas com [DADO NÃO FORNECIDO]
+8. Se um valor de teste parecer fora do intervalo válido do instrumento, sinalize
+
+Responda APENAS com JSON válido, sem texto adicional:
+{
+  "dados_cadastrais": "resumo estruturado",
+  "fontes_analisadas": ["lista com tipo de cada arquivo lido"],
+  "dados_quantitativos": {
+    "instrumento": {
+      "respondente": "",
+      "fatores": {"fator": {"bruto": 0, "percentil": 0, "classificacao": ""}},
+      "conclusao": ""
+    }
+  },
+  "anamnese_estruturada": {
+    "gestacional_nascimento": "",
+    "desenvolvimento_neuropsicomotor": "",
+    "aspectos_sensoriais": "",
+    "rotina": "",
+    "historico_escolar": "",
+    "comportamento_atual": "",
+    "historico_familiar": "",
+    "saude_geral": "",
+    "expectativas_familia": ""
+  },
+  "padroes_comportamentais": {
+    "atencao": "",
+    "hiperatividade_impulsividade": "",
+    "regulacao_emocional": "",
+    "aprendizagem": "",
+    "social": "",
+    "sensorial": ""
+  },
+  "inconsistencias": ["divergência entre fontes com análise"],
+  "hipoteses_sustentadas": [{"hipotese": "", "evidencias": []}],
+  "hipoteses_descartadas": [{"hipotese": "", "argumentacao": ""}],
+  "pontos_fortes": ["fatores protetivos identificados"],
+  "lacunas": ["dados ausentes ou sinalizados"],
+  "orientacao_para_redator": "síntese narrativa detalhada orientando tom, foco e ênfases do relatório"
+}`;
+
+  const userMessage = cadastro + '\n\n## Documentos para análise:\n' + sections +
+    '\n\n---\nArquivos lidos: ' + filesRead.join(', ') +
+    '\n\nAnalise todos os documentos acima e produza o dossiê analítico completo em JSON.';
+
+  onProgress?.('analitico', 'Agente Analítico interpretando instrumentos e cruzando fontes...');
+
+  // Sonnet para análise clínica — precisão é crítica aqui
+  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 8000, MODEL_SONNET);
+
   let dossie;
   try {
     const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     dossie = JSON.parse(clean);
   } catch (e) {
+    console.warn('[Analítico] JSON inválido — usando raw analysis');
     dossie = { raw_analysis: raw, parse_error: true };
   }
-  onProgress?.('analitico', 'Dossie concluido');
+
+  onProgress?.('analitico', 'Dossiê analítico concluído ✓');
   return { dossie, cost };
 }
 
-// ── AGENTE REDATOR — Sonnet
+// ── AGENTE REDATOR — Sonnet com foco em estrutura e estilo
+// Responsabilidade: redigir bem as 12 seções com base no dossiê já analisado
 async function agentRedator(systemPromptRAN, patientInfo, dossie, onProgress) {
-  onProgress?.('redator', 'Agente Redator iniciado...');
-  const dossieStr = dossie.parse_error ? dossie.raw_analysis : JSON.stringify(dossie, null, 2);
-  const userMessage = '# SOLICITACAO DE REDACAO DO RAN\n\n## Dados:\n- Nome: ' + patientInfo.full_name +
-    '\n- Nascimento: ' + (patientInfo.birth_date || '[NAO INFORMADO]') +
-    '\n- Idade: ' + (patientInfo.age || '[NAO INFORMADO]') + ' anos' +
-    '\n- Escolaridade: ' + (patientInfo.grade || '[NAO INFORMADO]') +
-    '\n- Dominancia: ' + (patientInfo.handedness || '[NAO INFORMADO]') +
-    '\n- Medicamentos: ' + (patientInfo.medications || 'Nenhum') +
-    '\n- Responsaveis: ' + (patientInfo.guardians || '[NAO INFORMADO]') +
-    '\n\n## Dossie Analitico:\n' + dossieStr +
-    '\n\n---\nRedija o RAN completo com as 12 secoes. Data: ' + new Date().toLocaleDateString('pt-BR') + '. Local: Uberlandia-MG.';
-  onProgress?.('redator', 'Estruturando as 12 secoes...');
+  onProgress?.('redator', 'Agente Redator iniciado — estruturando as 12 seções...');
+
+  const dossieStr = dossie.parse_error
+    ? dossie.raw_analysis
+    : JSON.stringify(dossie, null, 2);
+
+  const userMessage = [
+    '# SOLICITAÇÃO DE REDAÇÃO DO RAN',
+    '',
+    '## Dados do paciente:',
+    '- Nome: ' + patientInfo.full_name,
+    '- Data de nascimento: ' + (patientInfo.birth_date || '[NÃO INFORMADO]'),
+    '- Idade: ' + (patientInfo.age || '[NÃO INFORMADO]') + ' anos',
+    '- Escolaridade: ' + (patientInfo.grade || '[NÃO INFORMADO]'),
+    '- Dominância manual: ' + (patientInfo.handedness || '[NÃO INFORMADO]'),
+    '- Medicamentos: ' + (patientInfo.medications || 'Nenhum informado'),
+    '- Responsáveis: ' + (patientInfo.guardians || '[NÃO INFORMADO]'),
+    '',
+    '## Dossiê Analítico (produzido pelo Agente Analítico):',
+    dossieStr,
+    '',
+    '---',
+    'Com base no dossiê acima, redija o Relatório de Avaliação Neuropsicopedagógica (RAN) completo.',
+    'Siga EXATAMENTE a estrutura de 12 seções definida neste system prompt.',
+    'Use o primeiro nome da criança ao longo do texto.',
+    'Data: ' + new Date().toLocaleDateString('pt-BR') + '. Local: Uberlândia-MG.',
+    'Para dados ausentes: [DADO NÃO FORNECIDO — verificar com Patrízia]'
+  ].join('\n');
+
+  onProgress?.('redator', 'Agente Redator redigindo relatório...');
+
   const { text: relatorio, cost } = await callClaude(systemPromptRAN, userMessage, 16000, MODEL_SONNET);
-  onProgress?.('redator', 'Relatorio redigido');
+
+  onProgress?.('redator', 'Relatório redigido ✓');
   return { relatorio, cost };
 }
 
-// ── AGENTE REVISOR — Haiku (só avalia, não reescreve)
+// ── AGENTE REVISOR — Haiku com RAN COMPLETO (sem truncamento)
+// Responsabilidade: validar estrutura, coerência e completude
 async function agentRevisor(relatorio, dossie, patientInfo, onProgress) {
-  onProgress?.('revisor', 'Agente Revisor validando...');
-  const systemPrompt = `Voce e o Agente Revisor. Revise o RAN e produza APENAS um JSON:
-{"aprovado":true,"score_qualidade":0,"secoes_presentes":[],"secoes_ausentes":[],"problemas_criticos":[],"alertas":[],"sugestoes":[]}
-Responda APENAS com JSON valido.`;
-  const userMessage = 'Revise o RAN do paciente ' + patientInfo.full_name + '.\n\nSecoes esperadas: Cabecalho, Queixa Principal, Anamnese, Resumo Escolar, Visita Escolar, Avaliacao, Analise dos Instrumentos, Conclusao Integrada, Quadro Sintese, Orientacoes, Encaminhamentos, Consideracoes Finais.\n\nRelatorio:\n' + relatorio.substring(0, 8000);
+  onProgress?.('revisor', 'Agente Revisor validando relatório completo...');
+
+  const systemPrompt = `Você é o Agente Revisor de relatórios neuropsicopedagógicos do sistema Nexum.
+
+Valide o RAN e produza APENAS um JSON:
+{
+  "aprovado": true,
+  "score_qualidade": 0,
+  "secoes_presentes": [],
+  "secoes_ausentes": [],
+  "problemas_criticos": [],
+  "alertas": [],
+  "sugestoes": []
+}
+
+Critérios de pontuação (score 0-100):
+- Todas as 12 seções presentes: +40 pontos
+- Dados quantitativos dos instrumentos presentes: +20 pontos
+- Cruzamento entre instrumentos e anamnese: +15 pontos
+- Equilíbrio entre prejuízos e potencialidades: +10 pontos
+- Orientações específicas ao perfil: +10 pontos
+- Tom formal-técnico acessível: +5 pontos
+
+Seções obrigatórias: Cabeçalho, Queixa Principal, Anamnese, Resumo Escolar, Visita Escolar, Avaliação Neuropsicopedagógica, Análise dos Instrumentos, Conclusão Integrada, Quadro Síntese, Orientações, Encaminhamentos, Considerações Finais.
+
+aprovado=true se score >= 60. Responda APENAS com JSON válido.`;
+
+  // Envia RAN COMPLETO — sem truncamento
+  const userMessage = 'Revise o RAN do paciente ' + patientInfo.full_name +
+    '.\n\nRelatório completo:\n' + relatorio;
+
+  // Haiku é suficiente para validação estrutural
   const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 2000, MODEL_HAIKU);
+
   let revisao;
   try {
     const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     revisao = JSON.parse(clean);
   } catch (e) {
-    revisao = { aprovado: true, score_qualidade: 75, problemas_criticos: [], alertas: ['Revisao nao parseada'], secoes_ausentes: [] };
+    revisao = {
+      aprovado: true,
+      score_qualidade: 70,
+      problemas_criticos: [],
+      alertas: ['Revisão automática não parseada — verificar manualmente'],
+      secoes_ausentes: []
+    };
   }
-  revisao.relatorio_revisado = relatorio;
-  onProgress?.('revisor', 'Score: ' + revisao.score_qualidade + '/100');
+
+  onProgress?.('revisor', 'Score: ' + revisao.score_qualidade + '/100 ✓');
   return { revisao, cost };
 }
 
 // ── AGENTE DIFF — Haiku
 async function agentDiff(ranExistente, novosDocumentos, patientInfo, onProgress) {
   onProgress?.('diff', 'Agente Diff analisando novidades...');
-  const systemPrompt = `Voce e o Agente Diff. Compare o RAN existente com novos documentos e produza APENAS um JSON:
-{"novos_dados":{"descricao":"resumo","por_categoria":{}},"secoes_afetadas":[],"secoes_mantidas":[],"instrucoes_atualizacao":"instrucoes"}
-Responda APENAS com JSON valido.`;
+
+  const systemPrompt = `Você é o Agente Diff do sistema Nexum. Compare o RAN existente com novos documentos e identifique o que mudou.
+
+Produza APENAS um JSON:
+{
+  "novos_dados": {"descricao": "resumo do que é novo", "por_categoria": {}},
+  "secoes_afetadas": ["seções que precisam ser atualizadas"],
+  "secoes_mantidas": ["seções que podem ser mantidas"],
+  "instrucoes_atualizacao": "instruções específicas para o Redator"
+}
+Responda APENAS com JSON válido.`;
+
   const userMessage = 'Paciente: ' + patientInfo.full_name +
-    '\n\nRAN EXISTENTE:\n' + ranExistente.substring(0, 6000) +
+    '\n\nRAN EXISTENTE:\n' + ranExistente.substring(0, 8000) +
     '\n\nNOVOS DOCUMENTOS:\n' + novosDocumentos;
+
   const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 2000, MODEL_HAIKU);
+
   let diff;
   try {
     const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     diff = JSON.parse(clean);
   } catch (e) {
-    diff = { novos_dados: { descricao: raw }, secoes_afetadas: ['Todas'], secoes_mantidas: [], instrucoes_atualizacao: raw };
+    diff = {
+      novos_dados: { descricao: raw },
+      secoes_afetadas: ['Todas'],
+      secoes_mantidas: [],
+      instrucoes_atualizacao: raw
+    };
   }
-  onProgress?.('diff', (diff.secoes_afetadas?.length || 0) + ' secoes a atualizar');
+
+  onProgress?.('diff', (diff.secoes_afetadas?.length || 0) + ' seções a atualizar');
   return { diff, cost };
 }
 
 // ── PIPELINE PRINCIPAL — Analítico → Redator → Revisor
-async function generateRAN(systemPromptRAN, patientInfo, collectedData, onProgress) {
+async function generateRAN(systemPromptRAN, patientInfo, rawCollectedData, onProgress) {
+  const { processDataPackage } = require('./pdf-extractor');
   const startTime = Date.now();
-  const log = (agent, msg) => { console.log('[' + agent.toUpperCase() + '] ' + msg); onProgress?.(agent, msg); };
+  const log = (agent, msg) => {
+    console.log('[' + agent.toUpperCase() + '] ' + msg);
+    onProgress?.(agent, msg);
+  };
+
   log('pipeline', 'Iniciando pipeline RAN para ' + patientInfo.full_name);
 
-  const { dossie, cost: costAnalitico } = await agentAnalytico(patientInfo, collectedData, log);
-  const { relatorio: relatorioRascunho, cost: costRedator } = await agentRedator(systemPromptRAN, patientInfo, dossie, log);
-  const { revisao, cost: costRevisor } = await agentRevisor(relatorioRascunho, dossie, patientInfo, log);
+  // Pré-processamento: extrai texto de PDFs e organiza dados
+  log('pipeline', 'Pré-processando documentos (PDFs, transcrições, textos)...');
+  const { processed: processedData, meta: extractionMeta } = await processDataPackage(rawCollectedData);
+
+  log('pipeline', `Arquivos processados: ${extractionMeta.files_processed} | Ignorados: ${extractionMeta.files_skipped}`);
+  extractionMeta.log.forEach(entry => console.log('[PRÉ-PROCESSADOR] ' + entry));
+
+  // Etapa 1: Análise clínica profunda
+  log('pipeline', 'Etapa 1/3 — Agente Analítico (Sonnet)');
+  const { dossie, cost: costAnalitico } = await agentAnalytico(patientInfo, processedData, log);
+
+  // Etapa 2: Redação das 12 seções
+  log('pipeline', 'Etapa 2/3 — Agente Redator (Sonnet)');
+  const { relatorio, cost: costRedator } = await agentRedator(systemPromptRAN, patientInfo, dossie, log);
+
+  // Etapa 3: Revisão completa
+  log('pipeline', 'Etapa 3/3 — Agente Revisor (Haiku)');
+  const { revisao, cost: costRevisor } = await agentRevisor(relatorio, dossie, patientInfo, log);
 
   const elapsed = Math.round((Date.now() - startTime) / 1000);
-  const totalCost = parseFloat((costAnalitico.cost_usd + costRedator.cost_usd + costRevisor.cost_usd).toFixed(6));
+  const totalCost = parseFloat((
+    extractionMeta.extraction_cost_usd +
+    costAnalitico.cost_usd +
+    costRedator.cost_usd +
+    costRevisor.cost_usd
+  ).toFixed(6));
 
   const custos = {
+    pre_processamento: { cost_usd: extractionMeta.extraction_cost_usd },
     analitico: costAnalitico,
     redator: costRedator,
     revisor: costRevisor,
     total_usd: totalCost
   };
 
-  console.log('[PIPELINE] Concluido em ' + elapsed + 's — Custo: $' + totalCost + ' USD');
+  log('pipeline', `Concluído em ${elapsed}s — Score: ${revisao.score_qualidade}/100 — Custo: $${totalCost} USD`);
+  log('pipeline', `Arquivos processados: ${extractionMeta.log.join(' | ')}`);
 
   return {
-    relatorio: relatorioRascunho,
+    relatorio,
     dossie,
     revisao: {
       aprovado: revisao.aprovado,
@@ -182,35 +357,73 @@ async function generateRAN(systemPromptRAN, patientInfo, collectedData, onProgre
       secoes_ausentes: revisao.secoes_ausentes || []
     },
     custos,
+    extraction_meta: extractionMeta,
     elapsed_seconds: elapsed
   };
 }
 
 // ── PIPELINE DE ATUALIZAÇÃO — Diff → Redator → Revisor
-async function updateRAN(systemPromptRAN, patientInfo, ranExistente, novosDocumentos, onProgress) {
+async function updateRAN(systemPromptRAN, patientInfo, ranExistente, rawNovosDocumentos, onProgress) {
+  const { processDataPackage } = require('./pdf-extractor');
   const startTime = Date.now();
-  const log = (agent, msg) => { console.log('[' + agent.toUpperCase() + '] ' + msg); onProgress?.(agent, msg); };
-  log('pipeline', 'Iniciando ATUALIZACAO RAN para ' + patientInfo.full_name);
+  const log = (agent, msg) => {
+    console.log('[' + agent.toUpperCase() + '] ' + msg);
+    onProgress?.(agent, msg);
+  };
 
-  const { diff, cost: costDiff } = await agentDiff(ranExistente, novosDocumentos, patientInfo, log);
+  log('pipeline', 'Iniciando ATUALIZAÇÃO RAN para ' + patientInfo.full_name);
 
-  log('pipeline', 'Etapa 2/3 — Agente Redator');
-  onProgress?.('redator', 'Integrando novos dados...');
-  const userMessage = '# ATUALIZACAO DO RAN\n\n## Paciente: ' + patientInfo.full_name +
-    '\n\n## RAN ATUAL:\n' + ranExistente +
-    '\n\n## ANALISE DO DIFF:\n' + JSON.stringify(diff, null, 2) +
-    '\n\n## NOVOS DOCUMENTOS:\n' + novosDocumentos +
-    '\n\n---\nAtualize o RAN integrando os novos dados. Mantenha secoes nao afetadas. Data: ' + new Date().toLocaleDateString('pt-BR') + '.';
+  // Pré-processa novos documentos
+  const { processed: processedNovos, meta: extractionMeta } = await processDataPackage(rawNovosDocumentos);
+
+  // Monta string de novos documentos processados
+  const novosSections = [];
+  for (const [folderName, files] of Object.entries(processedNovos)) {
+    for (const file of files) {
+      novosSections.push('\n### [NOVO] ' + file.name + ' (' + folderName + ')');
+      novosSections.push(file.content || '[Sem conteúdo]');
+    }
+  }
+  const novosDocumentosStr = novosSections.join('\n');
+
+  // Diff
+  const { diff, cost: costDiff } = await agentDiff(ranExistente, novosDocumentosStr, patientInfo, log);
+
+  // Redator com novos dados
+  onProgress?.('redator', 'Integrando novos dados ao RAN...');
+  const userMessage = [
+    '# ATUALIZAÇÃO DO RAN EXISTENTE',
+    '',
+    '## Paciente: ' + patientInfo.full_name,
+    '',
+    '## RAN ATUAL (manter seções não afetadas):',
+    ranExistente,
+    '',
+    '## Análise do Agente Diff:',
+    JSON.stringify(diff, null, 2),
+    '',
+    '## Novos documentos processados:',
+    novosDocumentosStr,
+    '',
+    '---',
+    'Atualize o RAN integrando os novos dados. Mantenha o conteúdo já revisado das seções não afetadas.',
+    'Data: ' + new Date().toLocaleDateString('pt-BR') + '. Local: Uberlândia-MG.'
+  ].join('\n');
+
   const { text: relatorioAtualizado, cost: costRedator } = await callClaude(systemPromptRAN, userMessage, 16000, MODEL_SONNET);
-  onProgress?.('redator', 'RAN atualizado');
+  onProgress?.('redator', 'RAN atualizado ✓');
 
-  const { revisao, cost: costRevisor } = await agentRevisor(relatorioAtualizado, { parse_error: true, raw_analysis: JSON.stringify(diff) }, patientInfo, log);
+  const { revisao, cost: costRevisor } = await agentRevisor(relatorioAtualizado, { parse_error: true }, patientInfo, log);
 
   const elapsed = Math.round((Date.now() - startTime) / 1000);
-  const totalCost = parseFloat((costDiff.cost_usd + costRedator.cost_usd + costRevisor.cost_usd).toFixed(6));
+  const totalCost = parseFloat((
+    extractionMeta.extraction_cost_usd +
+    costDiff.cost_usd +
+    costRedator.cost_usd +
+    costRevisor.cost_usd
+  ).toFixed(6));
 
-  const custos = { diff: costDiff, redator: costRedator, revisor: costRevisor, total_usd: totalCost };
-  console.log('[PIPELINE] Atualizacao concluida em ' + elapsed + 's — Custo: $' + totalCost + ' USD');
+  log('pipeline', `Atualização concluída em ${elapsed}s — Score: ${revisao.score_qualidade}/100 — Custo: $${totalCost} USD`);
 
   return {
     relatorio: relatorioAtualizado,
@@ -223,9 +436,13 @@ async function updateRAN(systemPromptRAN, patientInfo, ranExistente, novosDocume
       sugestoes: revisao.sugestoes || [],
       secoes_ausentes: revisao.secoes_ausentes || []
     },
-    custos,
+    custos: { diff: costDiff, redator: costRedator, revisor: costRevisor, total_usd: totalCost },
     elapsed_seconds: elapsed
   };
 }
 
-module.exports = { callClaude: async (sp, um, mt, m) => (await callClaude(sp, um, mt, m)).text, generateRAN, updateRAN };
+module.exports = {
+  callClaude: async (sp, um, mt, m) => (await callClaude(sp, um, mt, m)).text,
+  generateRAN,
+  updateRAN
+};

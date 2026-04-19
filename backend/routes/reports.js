@@ -39,35 +39,82 @@ router.post('/generate/:patient_id', async (req, res) => {
       });
     }
 
+    // Monta dataPackage com dados corretos do Firestore
+    // Transcrições de áudio são passadas como texto — PDFs como base64 para extração via vision
     const dataPackage = {};
+    const filesLog = [];
+
     for (const f of filesSnap.docs) {
       const file = f.data();
       const folderName = drive.CATEGORY_TO_FOLDER[file.category] || file.category;
       if (!dataPackage[folderName]) dataPackage[folderName] = [];
-      dataPackage[folderName].push({
-        name: file.original_name, type: file.file_type,
-        content: file.transcription ? Buffer.from(file.transcription).toString('base64') : '[Arquivo binário]',
-        size: file.transcription ? Buffer.byteLength(file.transcription) : 0
-      });
+
+      if (file.transcription) {
+        // Áudio transcrito — passa o texto diretamente
+        dataPackage[folderName].push({
+          name: file.original_name,
+          type: 'text/plain',
+          transcription: file.transcription,
+          content: null,
+          source: 'firestore'
+        });
+        filesLog.push(file.original_name + ' (transcrição)');
+      } else if (file.drive_file_id) {
+        // Arquivo sem transcrição — busca do Drive para extração
+        filesLog.push(file.original_name + ' (pendente do Drive)');
+      }
     }
 
+    // Complementa com arquivos do Drive (PDFs, imagens, documentos)
     try {
       const driveData = await drive.collectPatientData(patient.drive_folder_id);
       for (const folder in driveData) {
         if (!dataPackage[folder]) dataPackage[folder] = [];
         for (const df of driveData[folder]) {
-          const exists = dataPackage[folder].some(f => f.name === df.name);
-          if (!exists) dataPackage[folder].push(df);
+          // Evita duplicar arquivos já presentes via Firestore
+          const existsInFirestore = dataPackage[folder].some(f => f.name === df.name && f.transcription);
+          if (!existsInFirestore) {
+            dataPackage[folder].push({
+              name: df.name,
+              type: df.type,
+              content: df.content, // base64 — será processado pelo pdf-extractor
+              size: df.size,
+              source: 'drive'
+            });
+            filesLog.push(df.name + ' (Drive)');
+          }
         }
       }
     } catch (driveErr) {
       console.warn('Could not collect from Drive:', driveErr.message);
     }
 
+    console.log('[Reports] Arquivos coletados:', filesLog.join(', '));
+
     const systemPrompt = getSystemPrompt();
     const ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage);
     const reportContent = ranResult.relatorio;
-    const ranMeta = { dossie: ranResult.dossie, revisao: ranResult.revisao, custos: ranResult.custos, elapsed_seconds: ranResult.elapsed_seconds };
+    const ranMeta = {
+      dossie: ranResult.dossie,
+      revisao: ranResult.revisao,
+      custos: ranResult.custos,
+      extraction_meta: ranResult.extraction_meta,
+      elapsed_seconds: ranResult.elapsed_seconds
+    };
+
+    // Bloqueia salvamento se score de qualidade for muito baixo
+    const scoreMinimo = 40;
+    if (ranResult.revisao?.score_qualidade < scoreMinimo && !req.body.force_save) {
+      return res.status(422).json({
+        error: 'Qualidade insuficiente',
+        score: ranResult.revisao.score_qualidade,
+        minimo: scoreMinimo,
+        problemas: ranResult.revisao.problemas_criticos,
+        secoes_ausentes: ranResult.revisao.secoes_ausentes,
+        message: 'Score ' + ranResult.revisao.score_qualidade + '/100 abaixo do mínimo (' + scoreMinimo + '). Envie force_save=true para salvar mesmo assim.',
+        relatorio_preview: reportContent.substring(0, 500)
+      });
+    }
 
     const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
     const version = reportsSnap.size + 1;

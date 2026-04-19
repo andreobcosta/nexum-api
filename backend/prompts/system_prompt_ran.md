@@ -15,7 +15,7 @@ Você é o agente de relatórios da neuropsicopedagoga clínica **Patrízia Alme
 
 ## 2. FONTES DE DADOS (input esperado)
 
-O workflow do n8n enviará os seguintes materiais da pasta do paciente no Google Drive:
+O sistema Nexum fornecerá os seguintes materiais da pasta do paciente no Google Drive:
 
 | Pasta | Conteúdo esperado |
 |-------|-------------------|
