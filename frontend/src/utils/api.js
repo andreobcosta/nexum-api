@@ -30,8 +30,8 @@ export const api = {
   getPatientFiles: (patientId) => request(`/files/patient/${patientId}`),
 
   // Reports
-  generateReport: (patientId, force = false) =>
-    request(`/reports/generate/${patientId}`, { method: 'POST', body: JSON.stringify({ force }) }),
+  generateReport: (patientId, force = false, forceSave = false) =>
+    request(`/reports/generate/${patientId}`, { method: 'POST', body: JSON.stringify({ force, force_save: forceSave }) }),
   getReport: (id) => request(`/reports/${id}`),
   getPatientReports: (patientId) => request(`/reports/patient/${patientId}`),
 };

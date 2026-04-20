@@ -24,17 +24,33 @@ export default function ReportPage() {
   // Simple markdown-to-html (headings, bold, lists, tables, hr)
   function renderMarkdown(md) {
     const lines = md.split('\n');
+    // Processa tabelas: agrupa linhas <tr> em <table>
+    function wrapTables(html) {
+      return html
+        .replace(/(<tr>.*?<\/tr>)+/gs, match => 
+          `<div style="overflow-x:auto;margin:12px 0"><table style="border-collapse:collapse;width:100%;font-size:13px">${match}</table></div>`
+        );
+    }
     const html = lines.map((line) => {
       if (line.startsWith('# ')) return `<h1 style="font-family:var(--font-display);font-size:22px;font-weight:600;margin:28px 0 12px;color:var(--green-dark)">${line.slice(2)}</h1>`;
       if (line.startsWith('## ')) return `<h2 style="font-size:18px;font-weight:500;margin:24px 0 10px;color:var(--text)">${line.slice(3)}</h2>`;
       if (line.startsWith('### ')) return `<h3 style="font-size:16px;font-weight:500;margin:20px 0 8px;color:var(--text)">${line.slice(4)}</h3>`;
       if (line.startsWith('---')) return '<hr style="border:none;border-top:1px solid var(--border);margin:24px 0"/>';
       if (line.startsWith('- ')) return `<div style="display:flex;gap:8px;margin:4px 0;padding-left:8px"><span style="color:var(--green)">•</span><span>${formatInline(line.slice(2))}</span></div>`;
-      if (line.startsWith('|')) return ''; // skip table rows (simplified)
+      if (line.startsWith('|')) {
+        // Renderiza linha de tabela como row de grid
+        const cells = line.split('|').filter(c => c.trim() !== '');
+        const isHeader = lines[lines.indexOf(line) + 1]?.match(/^\|[-:\s|]+\|$/);
+        const isSeparator = line.match(/^\|[-:\s|]+\|$/);
+        if (isSeparator) return ''; // pula linha de separador
+        const tag = isHeader ? 'th' : 'td';
+        const cellStyle = `padding:6px 12px;border:1px solid var(--border);font-size:13px;${isHeader ? 'background:var(--bg-surface);font-weight:500;' : ''}`;
+        return '<tr>' + cells.map(c => `<${tag} style="${cellStyle}">${formatInline(c.trim())}</${tag}>`).join('') + '</tr>';
+      }
       if (line.trim() === '') return '<br/>';
       return `<p style="margin:4px 0;line-height:1.7">${formatInline(line)}</p>`;
     }).join('');
-    return html;
+    return wrapTables(html);
   }
 
   function formatInline(text) {
@@ -50,6 +66,26 @@ export default function ReportPage() {
         style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', color: 'var(--green)', fontSize: 14, marginBottom: 16, fontWeight: 500 }}>
         <ArrowLeft style={{ width: 18, height: 18 }} /> Voltar
       </button>
+
+      {report.ran_meta && (() => {
+        try {
+          const meta = typeof report.ran_meta === 'string' ? JSON.parse(report.ran_meta) : report.ran_meta;
+          const score = meta?.revisao?.score_qualidade;
+          if (score !== undefined && score < 60) {
+            return (
+              <div style={{ background: '#fff8e1', border: '1px solid #f57f17', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#e65100', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 16 }}>⚠</span>
+                <div>
+                  <strong>Rascunho com dados parciais</strong> — Score {score}/100.
+                  {meta?.revisao?.secoes_ausentes?.length > 0 && ` Seções pendentes: ${meta.revisao.secoes_ausentes.join(', ')}.`}
+                  {' '}Revise e complete os dados faltantes antes de finalizar.
+                </div>
+              </div>
+            );
+          }
+        } catch(e) {}
+        return null;
+      })()}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

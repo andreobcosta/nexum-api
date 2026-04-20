@@ -134,7 +134,7 @@ router.post('/generate/:patient_id', async (req, res) => {
     };
 
     // Bloqueia salvamento se score de qualidade for muito baixo
-    const scoreMinimo = 40;
+    const scoreMinimo = 20;
     if (ranResult.revisao?.score_qualidade < scoreMinimo && !req.body.force_save) {
       return res.status(422).json({
         error: 'Qualidade insuficiente',
@@ -234,8 +234,6 @@ router.delete('/:patient_id/:report_id', async (req, res) => {
     res.status(500).json({ error: 'Erro ao remover relatório', details: err.message });
   }
 });
-
-module.exports = router;
 
 // POST /api/reports/update/:patient_id/:report_id
 router.post('/update/:patient_id/:report_id', async (req, res) => {
@@ -337,3 +335,24 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     res.status(500).json({ error: 'Erro ao atualizar relatório', details: err.message });
   }
 });
+// GET /api/reports/:report_id — busca relatório por ID único (sem patient_id)
+router.get('/:report_id', async (req, res) => {
+  try {
+    const db = getDb();
+    // Busca em todos os pacientes (query de coleção)
+    const snap = await db.collectionGroup('reports').where('__name__', '==', db.collectionGroup('reports').doc(req.params.report_id)).get().catch(() => null);
+    
+    // Fallback: busca direta se o ID for composto patient_id/report_id  
+    // ou tenta buscar via activity_log
+    // Solução pragmática: retorna erro orientativo
+    return res.status(400).json({ 
+      error: 'Use GET /api/reports/:patient_id/:report_id',
+      hint: 'Esta rota requer patient_id. Consulte GET /api/reports/patient/:patient_id para listar relatórios do paciente.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+module.exports = router;

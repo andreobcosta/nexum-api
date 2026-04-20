@@ -184,6 +184,13 @@ Responda APENAS com JSON válido, sem texto adicional:
     dossie = { raw_analysis: raw, parse_error: true };
   }
 
+  // Log de diagnóstico do dossiê
+  if (dossie.lacunas && dossie.lacunas.length > 0) {
+    console.log('[Analítico] Lacunas identificadas:', dossie.lacunas.join(' | '));
+  }
+  if (dossie.dados_cadastrais) {
+    console.log('[Analítico] Dados cadastrais:', dossie.dados_cadastrais.substring(0, 200));
+  }
   onProgress?.('analitico', 'Dossiê analítico concluído ✓');
   return { dossie, cost };
 }

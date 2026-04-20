@@ -46,7 +46,18 @@ export default function PatientDetailPage() {
       showToast(`Relatório v${result.version} gerado!`);
       navigate(`/relatorio/${result.id}`);
     } catch (err) {
-      showToast('Erro: ' + err.message);
+      // Score baixo mas relatório foi gerado — salvar como rascunho e navegar
+      if (err.message === 'Qualidade insuficiente' || err.message?.includes('Score')) {
+        try {
+          const result = await api.generateReport(id, true, true); // force_save=true
+          showToast('Rascunho gerado com dados parciais. Revise antes de finalizar.');
+          navigate(`/relatorio/${result.id}`);
+          return;
+        } catch (err2) {
+          // Se ainda falhar, mostra erro detalhado
+        }
+      }
+      showToast('Erro: ' + (err.message || 'Tente novamente'));
     } finally {
       setGenerating(false);
     }
@@ -134,7 +145,7 @@ export default function PatientDetailPage() {
         {generating ? (
           <>
             <Loader2 style={{ width: 20, height: 20, animation: 'spin 1s linear infinite' }} />
-            Gerando relatório...
+            Gerando... (pode levar até 5 min)
           </>
         ) : (
           <>

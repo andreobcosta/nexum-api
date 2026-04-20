@@ -12,7 +12,9 @@ const TEXT_MIME_TYPES = [
 
 // Tipos de arquivo que precisam de extração via vision
 const PDF_MIME_TYPES = [
-  'application/pdf'
+  'application/pdf',
+  'document',                  // tipo retornado pelo Google Drive para alguns PDFs
+  'application/octet-stream'   // binário genérico — tenta como PDF
 ];
 
 // Tipos de imagem que precisam de extração via vision
