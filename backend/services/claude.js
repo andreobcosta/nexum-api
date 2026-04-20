@@ -265,16 +265,17 @@ aprovado=true se score >= 60. Responda APENAS com JSON válido.`;
     '.\n\nRelatório completo:\n' + relatorio;
 
   // Haiku é suficiente para validação estrutural
-  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 2000, MODEL_HAIKU);
+  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 4000, MODEL_HAIKU);
 
   let revisao;
   try {
     const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     revisao = JSON.parse(clean);
+    console.log("[REVISOR] JSON completo:", JSON.stringify(revisao, null, 2));
   } catch (e) {
     revisao = {
       aprovado: true,
-      score_qualidade: 70,
+      score_qualidade: 0,
       problemas_criticos: [],
       alertas: ['Revisão automática não parseada — verificar manualmente'],
       secoes_ausentes: []
@@ -304,7 +305,7 @@ Responda APENAS com JSON válido.`;
     '\n\nRAN EXISTENTE:\n' + ranExistente.substring(0, 8000) +
     '\n\nNOVOS DOCUMENTOS:\n' + novosDocumentos;
 
-  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 2000, MODEL_HAIKU);
+  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 4000, MODEL_HAIKU);
 
   let diff;
   try {
