@@ -356,3 +356,46 @@ router.get('/:report_id', async (req, res) => {
 
 
 module.exports = router;
+
+// GET /api/reports/:patient_id/:report_id/docx — gera e retorna DOCX
+router.get('/:patient_id/:report_id/docx', async (req, res) => {
+  try {
+    const db = getDb();
+    const doc = await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(req.params.report_id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
+    const report = doc.data();
+    const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
+    const patient = patientDoc.data();
+    const { gerarDocx } = require('../services/docx-generator');
+    const buffer = await gerarDocx(report.content_md || '', report.patient_id);
+    const fileName = `RAN_${(patient?.full_name || 'paciente').replace(/\s+/g, '_')}_v${report.version}.docx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('[DOCX]', err);
+    res.status(500).json({ error: 'Erro ao gerar DOCX', details: err.message });
+  }
+});
+
+// PATCH /api/reports/:patient_id/:report_id — atualiza conteúdo do relatório
+router.patch('/:patient_id/:report_id', async (req, res) => {
+  try {
+    const db = getDb();
+    const { content_md } = req.body;
+    if (!content_md) return res.status(400).json({ error: 'content_md é obrigatório' });
+    const ref = db.collection('patients').doc(req.params.patient_id).collection('reports').doc(req.params.report_id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
+    await ref.update({ content_md, reviewed_at: new Date().toISOString(), status: 'reviewed' });
+    await db.collection('activity_log').add({
+      patient_id: req.params.patient_id, action: 'report_edited',
+      details: JSON.stringify({ report_id: req.params.report_id }),
+      created_at: new Date().toISOString()
+    });
+    res.json({ message: 'Relatório atualizado', id: req.params.report_id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao atualizar relatório', details: err.message });
+  }
+});
