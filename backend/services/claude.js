@@ -45,15 +45,23 @@ function buildAnalyticsInput(patientInfo, processedData) {
 
   for (const [folderName, files] of Object.entries(processedData)) {
     if (!files || files.length === 0) continue;
-    sections.push('\n## ' + folderName);
+    sections.push('\n## Pasta: ' + folderName);
 
     for (const file of files) {
-      sections.push('\n### ' + file.name + ' [' + file.type + ']');
-      if (file.content && file.content.trim()) {
-        sections.push(file.content);
-        filesRead.push(file.name + ' (' + file.type + ')');
+      sections.push('\n### Arquivo: ' + file.name + ' [' + file.type + ']');
+
+      // Prioridade: transcription (áudio) > content (PDF/imagem extraída) > vazio
+      const textContent = file.transcription || file.content;
+
+      if (textContent && textContent.trim()) {
+        // Identifica se é transcrição de áudio para contextualizar o Analítico
+        if (file.transcription) {
+          sections.push('[TRANSCRIÇÃO DE ÁUDIO — linguagem coloquial, normalizar para técnico]');
+        }
+        sections.push(textContent);
+        filesRead.push(file.name + ' (' + (file.transcription ? 'transcrição' : file.type) + ')');
       } else {
-        sections.push('[ARQUIVO SEM CONTEÚDO LEGÍVEL]');
+        sections.push('[ARQUIVO SEM CONTEÚDO LEGÍVEL — ignorar]');
       }
     }
   }
@@ -93,15 +101,18 @@ async function agentAnalytico(patientInfo, processedData, onProgress) {
 
 Sua função é analisar TODOS os documentos do paciente e produzir um dossiê analítico estruturado em JSON.
 
+REGRA CRÍTICA: Dados cadastrais ausentes (escolaridade, dominância, responsáveis, medicamentos) devem ser buscados ATIVAMENTE nas transcrições de áudio e documentos. Exemplo: se a mãe menciona "ela está no 4º ano" na anamnese, registre "4º ano EF" em escolaridade. NUNCA marque como [DADO NÃO FORNECIDO] se a informação aparecer em qualquer documento.
+
 Regras:
 1. Extraia TODOS os dados quantitativos (pontuações, percentis, classificações) com precisão
-2. Normalize linguagem coloquial das transcrições para termos técnicos
+2. Normalize linguagem coloquial das transcrições para termos técnicos — transcrições marcadas com [TRANSCRIÇÃO DE ÁUDIO] chegam em linguagem coloquial
 3. Separe fato de opinião — relatos dos pais devem ser identificados como tal
 4. Detecte inconsistências entre fontes e registre ambas as perspectivas
 5. Identifique hipóteses sustentadas pelos dados E hipóteses descartadas com argumentação
 6. Mapeie potencialidades e fatores protetivos — nunca foque só em dificuldades
-7. Sinalize lacunas com [DADO NÃO FORNECIDO]
+7. Sinalize lacunas com [DADO NÃO FORNECIDO] APENAS se a informação realmente não constar em NENHUM documento
 8. Se um valor de teste parecer fora do intervalo válido do instrumento, sinalize
+9. Para cada pasta de documentos, identifique o contexto clínico (Anamnese, Testes, Sessões, Intervenções, Documentos externos) e interprete os dados nesse contexto
 
 Responda APENAS com JSON válido, sem texto adicional:
 {
@@ -210,7 +221,9 @@ async function agentRevisor(relatorio, dossie, patientInfo, onProgress) {
 
   const systemPrompt = `Você é o Agente Revisor de relatórios neuropsicopedagógicos do sistema Nexum.
 
-Valide o RAN e produza APENAS um JSON:
+CRÍTICO: Responda EXCLUSIVAMENTE com JSON válido. Nenhum texto antes ou depois. Nenhum bloco markdown. Apenas o objeto JSON puro começando com { e terminando com }.
+
+Valide o RAN e produza este JSON:
 {
   "aprovado": true,
   "score_qualidade": 0,
