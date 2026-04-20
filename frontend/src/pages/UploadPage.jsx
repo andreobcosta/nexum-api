@@ -5,10 +5,10 @@ import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { api } from '../utils/api';
 
 const CATEGORIES = [
-  { value: 'anamnese', label: 'Anamnese' },
-  { value: 'teste', label: 'Teste aplicado' },
-  { value: 'sessao', label: 'Sessão' },
-  { value: 'externo', label: 'Documento externo' },
+  { value: 'anamnese', label: 'Anamnese', desc: 'Entrevista com família' },
+  { value: 'teste', label: 'Teste aplicado', desc: 'Protocolos de avaliação' },
+  { value: 'sessao', label: 'Sessão', desc: 'Registro de sessão' },
+  { value: 'externo', label: 'Doc. externo', desc: 'Laudo, relatório escolar' },
 ];
 
 export default function UploadPage() {
@@ -26,16 +26,16 @@ export default function UploadPage() {
 
   function showToast(msg) {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   }
 
-  async function uploadFile(file, cat) {
+  async function uploadFile(file) {
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('patient_id', id);
-      fd.append('category', cat || category);
+      fd.append('category', category);
       const result = await api.uploadFile(fd);
       showToast(result.message);
       setTimeout(() => navigate(`/paciente/${id}`), 1500);
@@ -71,7 +71,29 @@ export default function UploadPage() {
     if (file) uploadFile(file);
   }
 
-  // Mode selection screen
+  // Seleção de categoria (aparece em todos os modos)
+  function CategoryPicker() {
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500, marginBottom: 8 }}>Categoria</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {CATEGORIES.map(c => (
+            <button key={c.value} onClick={() => setCategory(c.value)}
+              style={{
+                padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                border: '1px solid var(--border)',
+                background: category === c.value ? 'var(--bg-accent)' : 'transparent',
+                color: category === c.value ? 'var(--text-inverse)' : 'var(--text-secondary)',
+              }}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Tela principal — seleção do modo
   if (!mode) {
     return (
       <div>
@@ -81,19 +103,11 @@ export default function UploadPage() {
           <ArrowLeft style={{ width: 18, height: 18 }} /> Voltar
         </button>
 
-        <h2 style={{ fontSize: 20, fontWeight: 500, marginBottom: 8 }}>Enviar arquivo</h2>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
-          Escolha o tipo de conteúdo para enviar
-        </p>
+        <h2 style={{ fontSize: 20, fontWeight: 500, marginBottom: 20 }}>Enviar arquivo</h2>
 
-        <div className="input-group">
-          <label>Categoria</label>
-          <select className="input-field" value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-        </div>
+        <CategoryPicker />
 
-        <div className="upload-grid" style={{ marginTop: 8 }}>
+        <div className="upload-grid">
           <button className="upload-option" onClick={() => setMode('audio')}>
             <Mic />
             <span className="label">Gravar áudio</span>
@@ -122,7 +136,7 @@ export default function UploadPage() {
     );
   }
 
-  // Audio recording screen
+  // Tela de gravação de áudio
   if (mode === 'audio') {
     return (
       <div>
@@ -132,9 +146,7 @@ export default function UploadPage() {
           <ArrowLeft style={{ width: 18, height: 18 }} /> Voltar
         </button>
 
-        <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          <span className="badge badge-info">{CATEGORIES.find(c => c.value === category)?.label}</span>
-        </div>
+        <CategoryPicker />
 
         <div className={`recorder ${recorder.isRecording ? 'recording' : ''}`}>
           <button className={`rec-button ${recorder.isRecording ? 'recording' : ''}`}
@@ -159,11 +171,17 @@ export default function UploadPage() {
             </button>
           </div>
         )}
+
+        {uploading && (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 12 }}>
+            Enviando... A transcrição será feita em background.
+          </p>
+        )}
       </div>
     );
   }
 
-  // Note writing screen
+  // Tela de nota de texto
   if (mode === 'note') {
     return (
       <div>
@@ -173,9 +191,7 @@ export default function UploadPage() {
           <ArrowLeft style={{ width: 18, height: 18 }} /> Voltar
         </button>
 
-        <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <span className="badge badge-info">{CATEGORIES.find(c => c.value === category)?.label}</span>
-        </div>
+        <CategoryPicker />
 
         <div className="input-group">
           <label>Título da nota</label>
@@ -198,7 +214,7 @@ export default function UploadPage() {
     );
   }
 
-  // Fallback for file/camera modes (handled by hidden input onChange)
+  // Fallback para file/camera
   return (
     <div className="empty-state">
       {uploading ? (

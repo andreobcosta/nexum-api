@@ -28,10 +28,14 @@ export const api = {
     }),
   saveNote: (data) => request('/files/note', { method: 'POST', body: JSON.stringify(data) }),
   getPatientFiles: (patientId) => request(`/files/patient/${patientId}`),
+  deleteFile: (patientId, fileId) => request(`/files/${patientId}/${fileId}`, { method: 'DELETE' }),
 
   // Reports
   generateReport: (patientId, force = false, forceSave = false) =>
     request(`/reports/generate/${patientId}`, { method: 'POST', body: JSON.stringify({ force, force_save: forceSave }) }),
-  getReport: (id) => request(`/reports/${id}`),
+  // getReport agora usa patient_id/report_id — ambos vêm do objeto report na PatientDetailPage
+  getReport: (patientId, reportId) => request(`/reports/${patientId}/${reportId}`),
   getPatientReports: (patientId) => request(`/reports/patient/${patientId}`),
+  updateReport: (patientId, reportId, force = false) =>
+    request(`/reports/update/${patientId}/${reportId}`, { method: 'POST', body: JSON.stringify({ force }) }),
 };
