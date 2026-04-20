@@ -189,7 +189,7 @@ Responda APENAS com JSON válido, sem texto adicional:
     console.log('[Analítico] Lacunas identificadas:', dossie.lacunas.join(' | '));
   }
   if (dossie.dados_cadastrais) {
-    console.log('[Analítico] Dados cadastrais:', dossie.dados_cadastrais.substring(0, 200));
+    console.log('[Analítico] Dados cadastrais:', JSON.stringify(dossie.dados_cadastrais).substring(0, 200));
   }
   onProgress?.('analitico', 'Dossiê analítico concluído ✓');
   return { dossie, cost };
