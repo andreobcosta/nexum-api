@@ -271,7 +271,7 @@ aprovado=true se score >= 60. Responda APENAS com JSON válido.`;
   try {
     const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     revisao = JSON.parse(clean);
-    console.log("[REVISOR] JSON completo:", JSON.stringify(revisao, null, 2));
+    console.log("[REVISOR] JSON completo: " + JSON.stringify(revisao));
   } catch (e) {
     revisao = {
       aprovado: true,
