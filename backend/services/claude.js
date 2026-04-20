@@ -42,28 +42,37 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 16000, model = 
 function buildAnalyticsInput(patientInfo, processedData) {
   const sections = [];
   const filesRead = [];
+  const filesEmpty = [];
 
   for (const [folderName, files] of Object.entries(processedData)) {
     if (!files || files.length === 0) continue;
     sections.push('\n## Pasta: ' + folderName);
 
     for (const file of files) {
-      sections.push('\n### Arquivo: ' + file.name + ' [' + file.type + ']');
-
       // Prioridade: transcription (áudio) > content (PDF/imagem extraída) > vazio
       const textContent = file.transcription || file.content;
 
-      if (textContent && textContent.trim()) {
+      if (textContent && String(textContent).trim()) {
+        sections.push('\n### Arquivo: ' + file.name);
+
         // Identifica se é transcrição de áudio para contextualizar o Analítico
         if (file.transcription) {
-          sections.push('[TRANSCRIÇÃO DE ÁUDIO — linguagem coloquial, normalizar para técnico]');
+          sections.push('[TRANSCRIÇÃO DE ÁUDIO — linguagem coloquial, normalizar para técnico clínico]');
         }
-        sections.push(textContent);
+        sections.push(String(textContent));
         filesRead.push(file.name + ' (' + (file.transcription ? 'transcrição' : file.type) + ')');
       } else {
-        sections.push('[ARQUIVO SEM CONTEÚDO LEGÍVEL — ignorar]');
+        // Arquivo sem conteúdo — não inclui no contexto mas registra
+        filesEmpty.push(file.name + ' (sem conteúdo — fonte: ' + (file.source || 'desconhecida') + ')');
+        console.log('[Analítico] Arquivo sem conteúdo ignorado:', file.name, '— fonte:', file.source);
       }
     }
+  }
+
+  if (filesEmpty.length > 0) {
+    sections.push('\n## Arquivos não processados (sem conteúdo legível):');
+    sections.push(filesEmpty.map(f => '- ' + f).join('\n'));
+    console.log('[Analítico] Total sem conteúdo:', filesEmpty.length, '—', filesEmpty.join(', '));
   }
 
   const cadastro = [
@@ -101,7 +110,12 @@ async function agentAnalytico(patientInfo, processedData, onProgress) {
 
 Sua função é analisar TODOS os documentos do paciente e produzir um dossiê analítico estruturado em JSON.
 
-REGRA CRÍTICA: Dados cadastrais ausentes (escolaridade, dominância, responsáveis, medicamentos) devem ser buscados ATIVAMENTE nas transcrições de áudio e documentos. Exemplo: se a mãe menciona "ela está no 4º ano" na anamnese, registre "4º ano EF" em escolaridade. NUNCA marque como [DADO NÃO FORNECIDO] se a informação aparecer em qualquer documento.
+REGRA CRÍTICA — EXTRAÇÃO ATIVA: Busque ATIVAMENTE dados cadastrais ausentes (escolaridade, dominância, responsáveis, medicamentos, queixa principal) em TODOS os documentos — transcrições de áudio, relatórios externos, protocolos de testes e imagens. Exemplos:
+- Mãe menciona "ela está no 4º ano" → registre "4º ano EF" em escolaridade
+- Protocolo de teste mostra nome do responsável → use em responsáveis
+- Qualquer documento menciona uso de medicamento → registre em medicamentos
+NUNCA marque como [DADO NÃO FORNECIDO] se a informação aparecer em QUALQUER documento fornecido.
+ATENÇÃO: Se não houver transcrição de áudio (anamnese), isso significa que a anamnese ainda não foi realizada ou transcrita — sinalize claramente como lacuna clínica, não como falha técnica.
 
 Regras:
 1. Extraia TODOS os dados quantitativos (pontuações, percentis, classificações) com precisão

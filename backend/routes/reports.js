@@ -44,52 +44,83 @@ router.post('/generate/:patient_id', async (req, res) => {
     const dataPackage = {};
     const filesLog = [];
 
+    // ETAPA 1: Adiciona arquivos do Firestore ao dataPackage
+    // Transcrições de áudio → texto direto
+    // Outros arquivos (PDFs, imagens) → placeholder para busca no Drive
+    const firestoreFileNames = new Set(); // controla arquivos já adicionados
+
     for (const f of filesSnap.docs) {
       const file = f.data();
       const folderName = drive.CATEGORY_TO_FOLDER[file.category] || file.category;
       if (!dataPackage[folderName]) dataPackage[folderName] = [];
 
       if (file.transcription) {
-        // Áudio transcrito — passa o texto diretamente
+        // Áudio com transcrição — passa texto diretamente
         dataPackage[folderName].push({
           name: file.original_name,
           type: 'text/plain',
           transcription: file.transcription,
           content: null,
-          source: 'firestore'
+          source: 'firestore_transcription'
         });
-        filesLog.push(file.original_name + ' (transcrição)');
+        filesLog.push(file.original_name + ' (transcrição áudio)');
+        firestoreFileNames.add(file.original_name);
       } else if (file.drive_file_id) {
-        // Arquivo sem transcrição — busca do Drive para extração
-        filesLog.push(file.original_name + ' (pendente do Drive)');
+        // Arquivo sem transcrição — adiciona placeholder para ser preenchido pelo Drive
+        dataPackage[folderName].push({
+          name: file.original_name,
+          type: file.file_type || 'application/octet-stream',
+          transcription: null,
+          content: null, // será preenchido abaixo
+          drive_file_id: file.drive_file_id,
+          source: 'firestore_pending'
+        });
+        filesLog.push(file.original_name + ' (aguardando Drive)');
+        firestoreFileNames.add(file.original_name);
       }
     }
 
-    // Complementa com arquivos do Drive (PDFs, imagens, documentos)
+    // ETAPA 2: Busca conteúdo do Drive para todos os arquivos
+    // — preenche placeholders pendentes e adiciona arquivos novos do Drive
     try {
       const driveData = await drive.collectPatientData(patient.drive_folder_id);
       for (const folder in driveData) {
         if (!dataPackage[folder]) dataPackage[folder] = [];
         for (const df of driveData[folder]) {
-          // Evita duplicar arquivos já presentes via Firestore
-          const existsInFirestore = dataPackage[folder].some(f => f.name === df.name && f.transcription);
-          if (!existsInFirestore) {
+          // Verifica se já existe no dataPackage como placeholder pendente
+          const pendingIdx = dataPackage[folder].findIndex(
+            f => f.name === df.name && f.source === 'firestore_pending'
+          );
+
+          if (pendingIdx >= 0) {
+            // Preenche o placeholder com o conteúdo real do Drive
+            dataPackage[folder][pendingIdx].content = df.content;
+            dataPackage[folder][pendingIdx].type = df.type || dataPackage[folder][pendingIdx].type;
+            dataPackage[folder][pendingIdx].source = 'drive_filled';
+            filesLog.push(df.name + ' (conteúdo Drive carregado)');
+          } else if (!firestoreFileNames.has(df.name)) {
+            // Arquivo existe no Drive mas não no Firestore — adiciona diretamente
             dataPackage[folder].push({
               name: df.name,
               type: df.type,
-              content: df.content, // base64 — será processado pelo pdf-extractor
+              content: df.content,
               size: df.size,
-              source: 'drive'
+              source: 'drive_only'
             });
-            filesLog.push(df.name + ' (Drive)');
+            filesLog.push(df.name + ' (Drive — não registrado no Firestore)');
           }
         }
       }
     } catch (driveErr) {
-      console.warn('Could not collect from Drive:', driveErr.message);
+      console.warn('[Reports] Erro ao coletar Drive:', driveErr.message);
     }
 
-    console.log('[Reports] Arquivos coletados:', filesLog.join(', '));
+    // ETAPA 3: Log detalhado do que vai para o pipeline
+    const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
+    const comConteudo = Object.values(dataPackage).reduce(
+      (sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0
+    );
+    console.log(`[Reports] Arquivos coletados (${totalFiles} total, ${comConteudo} com conteúdo):`, filesLog.join(' | '));
 
     const systemPrompt = getSystemPrompt();
     const ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage);
