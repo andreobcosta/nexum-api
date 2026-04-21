@@ -413,6 +413,8 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
 
 
 // GET /api/reports/:patient_id/:report_id/pdf — exporta como PDF
+// Google Doc: exporta via Drive API (melhor qualidade)
+// Fallback: gera PDF localmente via pdfkit (para relatórios antigos em .md)
 router.get('/:patient_id/:report_id/pdf', async (req, res) => {
   try {
     const db = getDb();
@@ -424,24 +426,32 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
     const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
     const fileName = 'RAN_' + nomeBase + '_v' + report.version + '.pdf';
 
-    if (!report.drive_file_id) {
-      return res.status(400).json({ error: 'Relatório sem arquivo no Drive. Gere o .docx primeiro.' });
+    let buffer;
+
+    // Tenta exportar via Drive (Google Doc nativo — melhor qualidade)
+    if (report.drive_file_id) {
+      try {
+        const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
+        if (isDoc) {
+          console.log('[PDF] Exportando Google Doc como PDF');
+          buffer = await drive.exportAsPdf(report.drive_file_id);
+        }
+      } catch (driveErr) {
+        console.warn('[PDF] Falha ao exportar do Drive:', driveErr.message);
+      }
     }
 
-    try {
-      const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
-      if (!isDoc) {
-        return res.status(400).json({ error: 'Exportação PDF disponível apenas para Google Docs. Baixe o .docx e converta localmente.' });
-      }
-      const buffer = await drive.exportAsPdf(report.drive_file_id);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
-      res.setHeader('Content-Length', buffer.length);
-      res.send(buffer);
-    } catch (err) {
-      console.error('[PDF]', err.message);
-      res.status(500).json({ error: 'Erro ao exportar PDF', details: err.message });
+    // Fallback: gera PDF localmente a partir do Markdown
+    if (!buffer) {
+      console.log('[PDF] Gerando PDF local via pdfkit');
+      const { gerarPdfDeMarkdown } = require('../services/docx-generator');
+      buffer = await gerarPdfDeMarkdown(report.content_md || '', patient?.full_name || 'Paciente', report.version);
     }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
   } catch (err) {
     console.error('[PDF]', err);
     res.status(500).json({ error: 'Erro ao gerar PDF', details: err.message });
@@ -506,3 +516,49 @@ router.patch('/:patient_id/:report_id', async (req, res) => {
     res.status(500).json({ error: 'Erro ao atualizar relatório', details: err.message });
   }
 });
+
+// POST /api/reports/:patient_id/:report_id/convert — converte .md para Google Doc nativo
+router.post('/:patient_id/:report_id/convert', async (req, res) => {
+  try {
+    const db = getDb();
+    const docRef = db.collection('patients').doc(req.params.patient_id).collection('reports').doc(req.params.report_id);
+    const snap = await docRef.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
+    const report = snap.data();
+    const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
+    const patient = patientDoc.data();
+
+    if (report.drive_is_google_doc) {
+      return res.json({ message: 'Relatório já é Google Doc', drive_file_id: report.drive_file_id });
+    }
+
+    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+    const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
+    const driveFile = await drive.uploadAsGoogleDoc(
+      report.content_md || '',
+      'RAN_' + nomeBase + '_v' + report.version,
+      subfolderId,
+      'text/markdown'
+    );
+
+    // Remove arquivo antigo .md do Drive se existir
+    if (report.drive_file_id && !report.drive_is_google_doc) {
+      try {
+        const { google } = require('googleapis');
+        const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI);
+        auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+        const driveApi = google.drive({ version: 'v3', auth });
+        await driveApi.files.delete({ fileId: report.drive_file_id });
+      } catch (e) { console.warn('[Convert] Não removeu arquivo antigo:', e.message); }
+    }
+
+    await docRef.update({ drive_file_id: driveFile.id, drive_is_google_doc: true });
+    res.json({ message: 'Convertido para Google Doc', drive_file_id: driveFile.id, web_view_link: driveFile.webViewLink });
+  } catch (err) {
+    console.error('[Convert]', err);
+    res.status(500).json({ error: 'Erro ao converter', details: err.message });
+  }
+});
+
+
+module.exports = router;

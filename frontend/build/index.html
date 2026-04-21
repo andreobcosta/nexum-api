@@ -74,8 +74,6 @@ input,select,textarea,button{font-family:inherit;-webkit-appearance:none}
 </head>
 <body>
 <div id="root"></div>
-<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet"/>
-<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -512,8 +510,8 @@ function FileItem({f,patientId,onDeleted,onError}){
         {f.transcription&&<div style={{fontSize:11,color:V.green,marginTop:2}}>✓ Transcrito</div>}
         {f.file_type==='audio'&&!f.transcription&&<div style={{fontSize:11,color:V.amber,marginTop:2}}>⏳ Não transcrito</div>}
       </div>
-      {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" title="Ver no Google Drive" style={{color:V.blue,fontSize:13,textDecoration:'none',flexShrink:0,padding:'4px 6px'}}>🔗</a>}
-      <button onClick={del} disabled={deleting} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:12,padding:'4px 8px',borderRadius:8,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400,transition:'all .2s'}}>
+      {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" title="Visualizar no Drive" style={{color:V.blue,fontSize:13,textDecoration:'none',flexShrink:0,padding:'4px 6px'}}>🔗</a>}
+      <button onClick={del} disabled={deleting} title={confirm?"Clique para confirmar exclusão":"Excluir arquivo"} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:12,padding:'4px 8px',borderRadius:8,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400,transition:'all .2s'}}>
         {deleting?'...':confirm?'Confirmar exclusão?':'🗑'}
       </button>
     </div>
@@ -608,7 +606,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit}){
             ):(
               <div style={{display:'flex',gap:10,marginBottom:12}}>
                 <Btn onClick={generateRAN} full icon="🤖" variant="secondary">Novo RAN</Btn>
-                <Btn onClick={()=>updateRAN(reports[0].id)} full icon="🔄">Atualizar RAN</Btn>
+                <Btn onClick={()=>{if(confirm('Atualizar RAN com novos documentos?\nCusto estimado: ~$0.28 USD'))updateRAN(reports[0].id)}} full icon="🔄">Atualizar RAN</Btn>
               </div>
             )}
             {!patient.ready_for_ran&&<div style={{fontSize:12,color:V.amber,textAlign:'center',marginTop:6}}>⚠ Dados incompletos — relatório gerado com o disponível</div>}
@@ -693,7 +691,7 @@ function CapturePage({patientId,initialCat,onBack,onDone}){
   const[noteText,setNoteText]=useState('');const[noteTitle,setNoteTitle]=useState('');const[selectedFiles,setSelectedFiles]=useState([]);
   const fileRef=useRef(null);const rec=useAudioRecorder();
 
-  const ALL_CATS=[{key:'anamnese',label:'Anamnese'},{key:'teste',label:'Testes'},{key:'sessao',label:'Sessões'},{key:'relatorio',label:'Relatórios'},{key:'intervencao',label:'Intervenções'},{key:'externo',label:'Docs. externos'}];
+  const ALL_CATS=[{key:'anamnese',label:'Anamnese'},{key:'teste',label:'Testes'},{key:'sessao',label:'Sessões'},{key:'intervencao',label:'Intervenções'},{key:'externo',label:'Docs. externos'}];
 
   const handleFiles=async()=>{if(selectedFiles.length===0)return;setUpl(true);try{const fd=new FormData();for(var i=0;i<selectedFiles.length;i++)fd.append('file',selectedFiles[i]);fd.append('patient_id',patientId);fd.append('category',cat);await apiUpload('/files/upload',fd);setToast({message:selectedFiles.length+' arquivo(s) enviado(s)',type:'success'});setTimeout(()=>onDone(),1500)}catch(e){setToast({message:e.message,type:'error'})}finally{setUpl(false)}};
   const handleAudio=async()=>{if(!rec.blob)return;setUpl(true);try{const f=new File([rec.blob],'audio_'+cat+'_'+Date.now()+'.webm',{type:rec.blob.type});const fd=new FormData();fd.append('file',f);fd.append('patient_id',patientId);fd.append('category',cat);await apiUpload('/files/upload',fd);rec.discard();setToast({message:'Áudio salvo!',type:'success'});setTimeout(()=>onDone(),1500)}catch(e){setToast({message:e.message,type:'error'})}finally{setUpl(false)}};
@@ -807,172 +805,103 @@ function CapturePage({patientId,initialCat,onBack,onDone}){
 
 /* ── PAGE: REPORT VIEW ── */
 
-/* ── RICH TEXT EDITOR (Quill) ── */
-function RichEditor({value,onChange,height}){
-  const containerRef=useRef(null);const quillRef=useRef(null);const isUpdating=useRef(false);
 
-  useEffect(()=>{
-    if(!containerRef.current||quillRef.current)return;
-    const q=new Quill(containerRef.current,{
-      theme:'snow',
-      modules:{
-        toolbar:[
-          [{header:[1,2,3,false]}],
-          ['bold','italic','underline','strike'],
-          [{color:[]},{background:[]}],
-          [{list:'ordered'},{list:'bullet'}],
-          [{align:[]}],
-          ['clean']
-        ]
-      }
-    });
-    // Estilo do editor
-    containerRef.current.querySelector('.ql-container').style.minHeight=(height||400)+'px';
-    containerRef.current.querySelector('.ql-container').style.fontSize='14px';
-    containerRef.current.querySelector('.ql-container').style.fontFamily="'DM Sans',sans-serif";
-    containerRef.current.querySelector('.ql-toolbar').style.borderRadius='12px 12px 0 0';
-    containerRef.current.querySelector('.ql-container').style.borderRadius='0 0 12px 12px';
-
-    if(value){isUpdating.current=true;q.root.innerHTML=value;isUpdating.current=false}
-    q.on('text-change',()=>{if(!isUpdating.current)onChange(q.root.innerHTML)});
-    quillRef.current=q;
-  },[]);
-
-  useEffect(()=>{
-    if(!quillRef.current||isUpdating.current)return;
-    const cur=quillRef.current.root.innerHTML;
-    if(cur!==value){isUpdating.current=true;quillRef.current.root.innerHTML=value||'';isUpdating.current=false}
-  },[value]);
-
-  return <div ref={containerRef} style={{borderRadius:12,border:'1.5px solid '+V.sand3,overflow:'hidden'}}/>;
-}
-
-const SECOES_RAN=['QUEIXA PRINCIPAL','ANAMNESE','RESUMO DO RELATÓRIO ESCOLAR','VISITA NEUROPSICOPEDAGÓGICA ESCOLAR','AVALIAÇÃO NEUROPSICOPEDAGÓGICA','ANÁLISE DOS INSTRUMENTOS','CONCLUSÃO INTEGRADA DOS TESTES','QUADRO SÍNTESE','ORIENTAÇÕES À FAMÍLIA E À ESCOLA','ENCAMINHAMENTOS PROFISSIONAIS','CONSIDERAÇÕES FINAIS'];
-
+/* ── PAGE: REPORT VIEW ── */
 function ReportViewPage({reportId,patientId,onBack}){
-  const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);const[tab,setTab]=useState('relatorio');
-  const[editing,setEditing]=useState(false);const[editContent,setEditContent]=useState('');const[secaoAtiva,setSecaoAtiva]=useState(null);const[saving,setSaving]=useState(false);const[toast,setToast]=useState(null);const[showEditConfirm,setShowEditConfirm]=useState(false);const[showDownloadMenu,setShowDownloadMenu]=useState(false);
-  useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setEditContent(r.content_html||r.content_md||'')}).catch(console.error).finally(()=>setLoading(false))},[reportId,patientId]);
+  const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);
+  const[tab,setTab]=useState('relatorio');const[converting,setConverting]=useState(false);
+  const[toast,setToast]=useState(null);const[showDownloadMenu,setShowDownloadMenu]=useState(false);
 
-  const getSecao=titulo=>{
-    const linhas=editContent.split('\n');
-    const ini=linhas.findIndex(l=>l.replace(/#+\s*/,'').toUpperCase().includes(titulo.toUpperCase()));
-    if(ini===-1)return'';
-    let fim=linhas.length;
-    for(let i=ini+1;i<linhas.length;i++){if(linhas[i].startsWith('## ')||linhas[i].startsWith('---')){fim=i;break}}
-    return linhas.slice(ini,fim).join('\n')
-  };
-  const setSecao=(titulo,novo)=>{
-    const linhas=editContent.split('\n');
-    const ini=linhas.findIndex(l=>l.replace(/#+\s*/,'').toUpperCase().includes(titulo.toUpperCase()));
-    if(ini===-1)return;
-    let fim=linhas.length;
-    for(let i=ini+1;i<linhas.length;i++){if(linhas[i].startsWith('## ')||linhas[i].startsWith('---')){fim=i;break}}
-    setEditContent([...linhas.slice(0,ini),...novo.split('\n'),...linhas.slice(fim)].join('\n'))
-  };
-  const saveEdit=async()=>{
-    setSaving(true);
-    try{
-      await apiFetch('/reports/'+patientId+'/'+reportId,{method:'PATCH',body:JSON.stringify({content_html:editContent})});
-      setRpt(r=>({...r,content_html:editContent,status:'reviewed'}));
-      setEditing(false);setSecaoAtiva(null);
-      setToast({message:'Relatório salvo e enviado ao Drive!',type:'success'});
+  useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(setRpt).catch(console.error).finally(()=>setLoading(false))},[reportId,patientId]);
+
+  const isGoogleDoc=rpt?.drive_is_google_doc;
+  const hasDriveFile=!!rpt?.drive_file_id;
+
+  const openInDocs=async()=>{
+    if(!hasDriveFile){setToast({message:'Arquivo ainda não está no Drive. Aguarde ou regenere o RAN.',type:'error'});return}
+    if(isGoogleDoc){
+      window.open('https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit','_blank');
+    }else{
+      // Converte .md para Google Doc primeiro
+      setConverting(true);setToast({message:'Convertendo para Google Doc...',type:'info'});
+      try{
+        const r=await apiFetch('/reports/'+patientId+'/'+reportId+'/convert',{method:'POST'});
+        setRpt(prev=>({...prev,drive_file_id:r.drive_file_id,drive_is_google_doc:true}));
+        setToast({message:'Convertido! Abrindo no Google Docs...',type:'success'});
+        setTimeout(()=>window.open('https://docs.google.com/document/d/'+r.drive_file_id+'/edit','_blank'),800);
+      }catch(e){setToast({message:'Erro ao converter: '+e.message,type:'error'})}
+      finally{setConverting(false)}
     }
-    catch(e){setToast({message:e.message,type:'error'})}finally{setSaving(false)}
   };
-  const downloadDocx=()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/docx','_blank')};
 
   if(loading)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Relatório" onBack={onBack}/><Spinner text="Carregando relatório..."/></div>;
   if(!rpt)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>;
+
   const ranMeta=rpt.ran_meta?JSON.parse(rpt.ran_meta):null;
   const revisao=ranMeta?.revisao||null;
 
   return(
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
-      <Header title={'RAN v'+rpt.version} subtitle={rpt.patient_id} onBack={onBack} right={
-        !editing&&<div style={{display:'flex',gap:6}}>
-          <div style={{position:'relative',display:'inline-block'}}>
+      <Header title={'RAN v'+rpt.version} subtitle="Ficha do paciente" onBack={onBack} right={
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          {/* Botão Baixar com dropdown */}
+          <div style={{position:'relative'}}>
             <button onClick={()=>setShowDownloadMenu(m=>!m)} title="Baixar arquivo" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ Baixar</button>
-            {showDownloadMenu&&<div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'#fff',borderRadius:10,boxShadow:'0 4px 20px rgba(0,0,0,0.15)',padding:'6px',zIndex:100,minWidth:160,border:'1px solid '+V.sand2}}>
-              <button onClick={()=>{downloadDocx();setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📄 Word (.docx)</button>
-              {<button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>}
+            {showDownloadMenu&&<div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:V.white,borderRadius:12,boxShadow:'0 4px 20px rgba(0,0,0,0.15)',padding:'6px',zIndex:200,minWidth:170,border:'1px solid '+V.sand2}}>
+              <button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/docx','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📄 Word (.docx)</button>
+              <button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>
             </div>}
           </div>
-          <button onClick={()=>{if(rpt.drive_file_id){window.open(rpt.drive_is_google_doc?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit':'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view','_blank')}else{alert('Gere o relatório primeiro para criar o arquivo no Drive.')}}} title="Editar no Google Docs" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Editar</button>
+          {/* Botão Editar — abre no Google Docs, convertendo se necessário */}
+          <button onClick={openInDocs} disabled={converting} title={isGoogleDoc?"Editar no Google Docs":"Converter e editar no Google Docs"} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',opacity:converting?.6:1}}>
+            {converting?'Convertendo...':'✏️ Editar'}
+          </button>
         </div>
       }/>
-      
 
       {/* Tabs */}
-      {!editing&&<div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,padding:'0 16px',flexShrink:0}}>
+      <div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,padding:'0 16px',flexShrink:0}}>
         {[{k:'relatorio',lb:'📄 Relatório'},{k:'revisao',lb:'✅ Revisão'}].map(({k,lb})=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:'12px 16px',background:'none',border:'none',borderBottom:tab===k?'2px solid '+V.forest:'2px solid transparent',color:tab===k?V.forest:V.ink3,fontSize:13,fontWeight:tab===k?600:400,cursor:'pointer',fontFamily:'inherit',transition:'color .2s'}}>{lb}</button>
         ))}
-      </div>}
-      <div style={{flex:1,overflow:'auto',padding:16}}>
+      </div>
 
-
-
-        {/* ── MODO VISUALIZAÇÃO ── */}
-        {!editing&&tab==='relatorio'&&(
-          <>
-            <Card style={{marginBottom:12}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <Badge type={rpt.status==='reviewed'?'done':'draft'} text={rpt.status==='reviewed'?'Revisado':'Rascunho'}/>
-                  <div style={{fontSize:12,color:V.ink3,marginTop:6}}>{new Date(rpt.generated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div>
-                </div>
-                {revisao&&<div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:700,color:revisao.score_qualidade>=70?V.green:V.amber,fontFamily:"'Fraunces',serif"}}>{revisao.score_qualidade}</div><div style={{fontSize:10,color:V.ink3}}>score</div></div>}{rpt.ran_meta&&JSON.parse(rpt.ran_meta).custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${JSON.parse(rpt.ran_meta).custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
-              </div>
-            </Card>
-            {showEditConfirm&&<div className="overlay" onClick={()=>setShowEditConfirm(false)}>
-              <div className="sheet" onClick={e=>e.stopPropagation()}>
-                <div className="sheet-handle"/>
-                <div style={{fontSize:17,fontWeight:700,marginBottom:8,fontFamily:"'Fraunces',serif",color:V.ink}}>Editar relatório</div>
-                <div style={{fontSize:14,color:V.ink2,lineHeight:1.65,marginBottom:20}}>
-                  {rpt.drive_is_google_doc
-                    ?'O relatório será aberto no Google Docs para edição. As alterações serão sincronizadas automaticamente no app.'
-                    :'Este relatório não está salvo como Google Doc. Baixe o .docx, edite no Word e reimporte no Drive para sincronizar.'
-                  }
-                </div>
-                <div style={{display:'flex',gap:10}}>
-                  <Btn onClick={()=>setShowEditConfirm(false)} variant="ghost" full>Cancelar</Btn>
-                  {rpt.drive_file_id&&<Btn onClick={()=>{
-                    const url=rpt.drive_is_google_doc
-                      ?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit'
-                      :'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view';
-                    window.open(url,'_blank');
-                    setShowEditConfirm(false);
-                  }} full>{rpt.drive_is_google_doc?'Abrir no Google Docs':'Abrir no Drive'}</Btn>}
-                </div>
-              </div>
-            </div>}
-            {rpt.drive_file_id&&<div style={{background:V.sage3,borderRadius:12,padding:'12px 14px',marginBottom:12,fontSize:12,color:V.forest,border:'1px solid '+V.sage}}>
-              <div style={{fontWeight:700,marginBottom:6,fontSize:13}}>🔄 Sincronização automática ativa</div>
-              <div style={{lineHeight:1.7,color:V.ink2}}>
-                {rpt.drive_is_google_doc
-                  ?<span>✏️ Clique em <strong>Docs</strong> para editar no Google Docs · As alterações são sincronizadas aqui automaticamente.</span>
-                  :<span>📂 Clique em <strong>Drive</strong> para visualizar · Para editar, baixe o <strong>.docx</strong>, edite no Word e reimporte para o Drive.</span>
-                }
-              </div>
-              <div style={{marginTop:6,fontSize:11,color:V.ink3}}>Última sincronização: {rpt.last_synced_at?new Date(rpt.last_synced_at).toLocaleString('pt-BR'):'Na geração'}</div>
-            </div>}
-            <div style={{background:V.white,borderRadius:16,border:'1px solid '+V.sand2,padding:'24px 20px',paddingBottom:40,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
-              {rpt.content_html?<div className="md" dangerouslySetInnerHTML={{__html:rpt.content_html}}/>:<Markdown content={rpt.content_md||'Conteúdo não disponível'}/>}
-            </div>
-          </>
-        )}
-        {!editing&&tab==='revisao'&&(
-          revisao?<RevisaoCard revisao={revisao}/>:
-          <div style={{textAlign:'center',padding:40,color:V.ink3}}>
-            <div style={{fontSize:32,marginBottom:12}}>📋</div>
-            <div>Dados de revisão não disponíveis para este relatório</div>
+      <div style={{flex:1,overflow:'auto',padding:16,paddingBottom:32}}>
+        {/* Banner info Drive */}
+        {hasDriveFile&&<div style={{background:isGoogleDoc?V.sage3:V.amberLight,borderRadius:12,padding:'10px 14px',marginBottom:12,fontSize:12,color:isGoogleDoc?V.forest:V.amber,border:'1px solid '+(isGoogleDoc?V.sage:V.amber),display:'flex',gap:8,alignItems:'flex-start'}}>
+          <span>{isGoogleDoc?'🔄':'⚠'}</span>
+          <div>
+            {isGoogleDoc
+              ?<span>Edições no <strong>Google Docs</strong> são sincronizadas automaticamente. Última sincronização: {rpt.last_synced_at?new Date(rpt.last_synced_at).toLocaleString('pt-BR'):'na geração'}</span>
+              :<span>Este relatório está no Drive como arquivo <strong>.md</strong>. Clique em <strong>Editar</strong> para convertê-lo em Google Doc e habilitar edição completa.</span>
+            }
           </div>
+        </div>}
+
+        {tab==='relatorio'&&<>
+          <Card style={{marginBottom:12}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div>
+                <Badge type={rpt.status==='reviewed'?'done':'draft'} text={rpt.status==='reviewed'?'Revisado':'Rascunho'}/>
+                <div style={{fontSize:12,color:V.ink3,marginTop:6}}>{new Date(rpt.generated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div>
+              </div>
+              {revisao&&<div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:700,color:revisao.score_qualidade>=70?V.green:V.amber,fontFamily:"'Fraunces',serif"}}>{revisao.score_qualidade}</div><div style={{fontSize:10,color:V.ink3}}>score</div></div>}
+              {ranMeta?.custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${ranMeta.custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
+            </div>
+          </Card>
+          <div style={{background:V.white,borderRadius:16,border:'1px solid '+V.sand2,padding:'24px 20px',paddingBottom:40,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+            {rpt.content_html?<div className="md" dangerouslySetInnerHTML={{__html:rpt.content_html}}/>:<Markdown content={rpt.content_md||'Conteúdo não disponível'}/>}
+          </div>
+        </>}
+        {tab==='revisao'&&(revisao?<RevisaoCard revisao={revisao}/>:
+          <div style={{textAlign:'center',padding:40,color:V.ink3}}><div style={{fontSize:32,marginBottom:12}}>📋</div><div>Dados de revisão não disponíveis para este relatório</div></div>
         )}
       </div>
+      <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
     </div>
   )
 }
+
 
 /* ── PAGE: EDIT PATIENT ── */
 function EditPatientPage({patientId,onBack,onSaved}){
