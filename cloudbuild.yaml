@@ -124,8 +124,3 @@ options:
   machineType: 'E2_HIGHCPU_8'
 
 timeout: '600s'
-
-substitutions:
-  _REGION: us-central1
-  _SERVICE: nexum-api
-  _PROJECT: nexum-production
