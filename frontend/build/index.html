@@ -514,7 +514,7 @@ function FileItem({f,patientId,onDeleted,onError}){
       </div>
       {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" style={{color:V.blue,fontSize:13,textDecoration:'none',flexShrink:0,padding:'4px 6px'}}>🔗</a>}
       <button onClick={del} disabled={deleting} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:12,padding:'4px 8px',borderRadius:8,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400,transition:'all .2s'}}>
-        {deleting?'...':confirm?'Confirmar':'🗑'}
+        {deleting?'...':confirm?'Confirmar exclusão?':'🗑'}
       </button>
     </div>
   )
@@ -650,7 +650,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit}){
             const expanded=expandedCat===cat.key;
             return(
               <div key={cat.key} style={{background:V.white,borderRadius:14,border:'1px solid '+V.sand2,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
-                <div onClick={()=>setExpandedCat(expanded?null:cat.key)} style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                <div onClick={()=>setExpandedCat(expanded?null:cat.key)} title={cat.label} style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
                   <span style={{fontSize:18}}>{cat.icon}</span>
                   <div style={{flex:1}}>
                     <div style={{fontSize:14,fontWeight:600,color:V.ink}}>{cat.label}</div>
@@ -851,7 +851,7 @@ const SECOES_RAN=['QUEIXA PRINCIPAL','ANAMNESE','RESUMO DO RELATÓRIO ESCOLAR','
 
 function ReportViewPage({reportId,patientId,onBack}){
   const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);const[tab,setTab]=useState('relatorio');
-  const[editing,setEditing]=useState(false);const[editContent,setEditContent]=useState('');const[secaoAtiva,setSecaoAtiva]=useState(null);const[saving,setSaving]=useState(false);const[toast,setToast]=useState(null);
+  const[editing,setEditing]=useState(false);const[editContent,setEditContent]=useState('');const[secaoAtiva,setSecaoAtiva]=useState(null);const[saving,setSaving]=useState(false);const[toast,setToast]=useState(null);const[showEditConfirm,setShowEditConfirm]=useState(false);const[showDownloadMenu,setShowDownloadMenu]=useState(false);const[showDownloadMenu,setShowDownloadMenu]=useState(false);const[showEditConfirm,setShowEditConfirm]=useState(false);
   useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setEditContent(r.content_html||r.content_md||'')}).catch(console.error).finally(()=>setLoading(false))},[reportId,patientId]);
 
   const getSecao=titulo=>{
@@ -891,22 +891,40 @@ function ReportViewPage({reportId,patientId,onBack}){
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
       <Header title={'RAN v'+rpt.version} subtitle={rpt.patient_id} onBack={onBack} right={
         !editing&&<div style={{display:'flex',gap:6}}>
-          <button onClick={downloadDocx} title="Baixar como Word (.docx)" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ .docx</button>
-          {rpt.drive_is_google_doc&&<button onClick={()=>window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank')} title="Baixar como PDF" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ .pdf</button>}
-          <button onClick={()=>{
+          <div style={{position:'relative',display:'inline-block'}}>
+            <button onClick={()=>setShowDownloadMenu(m=>!m)} title="Baixar arquivo" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ Baixar</button>
+            {showDownloadMenu&&<div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'#fff',borderRadius:10,boxShadow:'0 4px 20px rgba(0,0,0,0.15)',padding:'6px',zIndex:100,minWidth:160,border:'1px solid '+V.sand2}}>
+              <button onClick={()=>{downloadDocx();setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📄 Word (.docx)</button>
+              {rpt.drive_is_google_doc&&<button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>}
+            </div>}
+          </div>
+          <button onClick={()=>setShowEditConfirm(true)} title="Editar relatório" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Editar</button>
+        </div>
+      }/>
+      {/* Modal confirmação edição */}
+      {showEditConfirm&&<div className="overlay" onClick={()=>setShowEditConfirm(false)}>
+        <div className="sheet" onClick={e=>e.stopPropagation()}>
+          <div className="sheet-handle"/>
+          <div style={{fontSize:17,fontWeight:700,marginBottom:8,fontFamily:"'Fraunces',serif",color:V.ink}}>Editar relatório</div>
+          <div style={{fontSize:14,color:V.ink2,lineHeight:1.65,marginBottom:20}}>Escolha onde deseja editar o relatório:</div>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            <Btn onClick={()=>{
+              setShowEditConfirm(false);
               if(rpt.drive_file_id){
-                // Google Doc nativo: abre direto no editor
-                // DOCX comum: abre no Drive (usuário pode importar para Docs)
                 const url=rpt.drive_is_google_doc
                   ?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit'
                   :'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view';
                 window.open(url,'_blank');
               }else{
-                alert('Gere o download .docx primeiro para criar o arquivo no Drive.');
+                alert('Arquivo ainda não disponível no Drive. Baixe o .docx primeiro.');
               }
-            }} title={rpt.drive_is_google_doc?"Editar no Google Docs":"Abrir no Drive"} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ {rpt.drive_is_google_doc?'Docs':'Drive'}</button>
+            }} full icon="📝">Abrir no Google Docs</Btn>
+            <Btn onClick={()=>{setShowEditConfirm(false);downloadDocx()}} variant="secondary" full icon="💻">Baixar .docx para editar no Word</Btn>
+            <Btn onClick={()=>setShowEditConfirm(false)} variant="ghost" full>Cancelar</Btn>
+          </div>
         </div>
-      }/>
+      </div>}
+
       {/* Tabs */}
       {!editing&&<div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,padding:'0 16px',flexShrink:0}}>
         {[{k:'relatorio',lb:'📄 Relatório'},{k:'revisao',lb:'✅ Revisão'}].map(({k,lb})=>(
@@ -929,6 +947,28 @@ function ReportViewPage({reportId,patientId,onBack}){
                 {revisao&&<div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:700,color:revisao.score_qualidade>=70?V.green:V.amber,fontFamily:"'Fraunces',serif"}}>{revisao.score_qualidade}</div><div style={{fontSize:10,color:V.ink3}}>score</div></div>}{rpt.ran_meta&&JSON.parse(rpt.ran_meta).custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${JSON.parse(rpt.ran_meta).custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
               </div>
             </Card>
+            {showEditConfirm&&<div className="overlay" onClick={()=>setShowEditConfirm(false)}>
+              <div className="sheet" onClick={e=>e.stopPropagation()}>
+                <div className="sheet-handle"/>
+                <div style={{fontSize:17,fontWeight:700,marginBottom:8,fontFamily:"'Fraunces',serif",color:V.ink}}>Editar relatório</div>
+                <div style={{fontSize:14,color:V.ink2,lineHeight:1.65,marginBottom:20}}>
+                  {rpt.drive_is_google_doc
+                    ?'O relatório será aberto no Google Docs para edição. As alterações serão sincronizadas automaticamente no app.'
+                    :'Este relatório não está salvo como Google Doc. Baixe o .docx, edite no Word e reimporte no Drive para sincronizar.'
+                  }
+                </div>
+                <div style={{display:'flex',gap:10}}>
+                  <Btn onClick={()=>setShowEditConfirm(false)} variant="ghost" full>Cancelar</Btn>
+                  {rpt.drive_file_id&&<Btn onClick={()=>{
+                    const url=rpt.drive_is_google_doc
+                      ?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit'
+                      :'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view';
+                    window.open(url,'_blank');
+                    setShowEditConfirm(false);
+                  }} full>{rpt.drive_is_google_doc?'Abrir no Google Docs':'Abrir no Drive'}</Btn>}
+                </div>
+              </div>
+            </div>}
             {rpt.drive_file_id&&<div style={{background:V.sage3,borderRadius:12,padding:'12px 14px',marginBottom:12,fontSize:12,color:V.forest,border:'1px solid '+V.sage}}>
               <div style={{fontWeight:700,marginBottom:6,fontSize:13}}>🔄 Sincronização automática ativa</div>
               <div style={{lineHeight:1.7,color:V.ink2}}>
