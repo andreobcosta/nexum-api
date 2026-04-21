@@ -368,7 +368,7 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
     const patient = patientDoc.data();
     const { gerarDocx } = require('../services/docx-generator');
     const buffer = await gerarDocx(report.content_md || '', report.patient_id);
-    const fileName = `RAN_${(patient?.full_name || 'paciente').replace(/\s+/g, '_')}_v${report.version}.docx`;
+    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_'); const fileName = `RAN_${nomeBase}_v${report.version}.docx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.send(buffer);
