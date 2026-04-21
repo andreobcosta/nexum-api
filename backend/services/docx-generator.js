@@ -405,3 +405,103 @@ async function gerarDocx(contentMd, nomeArquivo) {
 }
 
 module.exports = { gerarDocx };
+
+// Converte HTML rico (do editor Quill) para DOCX
+// Usa html-to-docx ou parseia o HTML manualmente
+async function gerarDocxDeHtml(htmlContent, patientId) {
+  const {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    AlignmentType, BorderStyle, WidthType, ShadingType, VerticalAlign,
+    Header, Footer, PageNumber
+  } = require('docx');
+
+  // Parser simples de HTML → elementos docx
+  // Para HTML complexo do Quill, usamos uma abordagem de extração de texto com formatação
+  const elementos = parsearHtmlParaDocx(htmlContent);
+
+  const doc = new Document({
+    styles: {
+      default: { document: { run: { font: 'Calibri', size: 20, color: '2C2C2A' } } }
+    },
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+        }
+      },
+      headers: { default: gerarHeader() },
+      footers: { default: gerarFooter() },
+      children: elementos
+    }]
+  });
+
+  return await Packer.toBuffer(doc);
+}
+
+function parsearHtmlParaDocx(html) {
+  const { Paragraph, TextRun, AlignmentType } = require('docx');
+  const elementos = [];
+
+  // Remove tags de script/style
+  html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  html = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+
+  // Divide por blocos (p, h1-h6, li, tr)
+  const blocos = html.split(/(<\/?(p|h[1-6]|li|tr|div|blockquote)[^>]*>)/gi)
+    .filter(b => b && !b.match(/^<\/?(p|h[1-6]|li|tr|div|blockquote)/i));
+
+  for (const bloco of blocos) {
+    const textoLimpo = bloco.replace(/<[^>]+>/g, '').trim();
+    if (!textoLimpo) continue;
+
+    // Detecta tipo pelo contexto
+    const runs = extrairRunsDoHtml(bloco);
+    if (runs.length > 0) {
+      elementos.push(new Paragraph({
+        spacing: { before: 60, after: 60 },
+        children: runs
+      }));
+    }
+  }
+
+  return elementos.length > 0 ? elementos : [new Paragraph({ children: [new TextRun({ text: '', font: 'Calibri' })] })];
+}
+
+function extrairRunsDoHtml(html) {
+  const { TextRun } = require('docx');
+  const runs = [];
+
+  // Remove tags preservando texto com formatação
+  const partes = html.split(/(<(?:strong|b|em|i|u|span|a)[^>]*>|<\/(?:strong|b|em|i|u|span|a)>)/gi);
+
+  let bold = false, italic = false, underline = false, color = null;
+
+  for (const parte of partes) {
+    if (parte.match(/^<(strong|b)>/i)) { bold = true; continue; }
+    if (parte.match(/^<\/(strong|b)>/i)) { bold = false; continue; }
+    if (parte.match(/^<(em|i)>/i)) { italic = true; continue; }
+    if (parte.match(/^<\/(em|i)>/i)) { italic = false; continue; }
+    if (parte.match(/^<u>/i)) { underline = true; continue; }
+    if (parte.match(/^<\/u>/i)) { underline = false; continue; }
+    if (parte.match(/^<span/i)) {
+      const colorMatch = parte.match(/color:\s*([#\w]+)/i);
+      if (colorMatch) color = colorMatch[1].replace('#', '');
+      continue;
+    }
+    if (parte.match(/^<\/span>/i)) { color = null; continue; }
+    if (parte.match(/^</)) continue; // outra tag
+
+    const texto = parte.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ');
+    if (texto.trim()) {
+      runs.push(new TextRun({
+        text: texto, bold, italics: italic, underline: underline ? {} : undefined,
+        color: color || '2C2C2A', font: 'Calibri', size: 20
+      }));
+    }
+  }
+
+  return runs;
+}
+
+module.exports = { gerarDocx, gerarDocxDeHtml };
