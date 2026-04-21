@@ -128,7 +128,7 @@ function useAudioRecorder(){
 function Header({title,subtitle,onBack,right}){
   return(
     <div style={{background:V.forest,padding:'14px 20px',paddingTop:'max(14px,env(safe-area-inset-top))',display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,zIndex:50,flexShrink:0,boxShadow:'0 2px 12px rgba(0,0,0,0.15)'}}>
-      {onBack&&<button onClick={onBack} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.9)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,fontSize:18}}>←</button>}
+      {onBack&&<button onClick={onBack} title="Voltar" style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.9)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,fontSize:18}}>←</button>}
       <div style={{flex:1,minWidth:0}}>
         {subtitle&&<div style={{color:'rgba(214,239,229,0.7)',fontSize:10,fontWeight:500,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:2}}>{subtitle}</div>}
         <div style={{color:'#fff',fontSize:17,fontWeight:600,fontFamily:"'Fraunces',serif",overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{title}</div>
@@ -341,7 +341,7 @@ function PatientListPage({onSelect,onNew,onImport,onCosts}){
         <div style={{display:'flex',gap:8}}>
           <button onClick={onCosts} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16}} title="Custos">💰</button>
           <button onClick={onImport} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:15}} title="Importar CSV">↑</button>
-          <button onClick={onNew} style={{background:'rgba(255,255,255,0.18)',border:'none',color:'#fff',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,fontWeight:300}}>+</button>
+          <button onClick={onNew} title="Novo paciente" style={{background:'rgba(255,255,255,0.18)',border:'none',color:'#fff',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,fontWeight:300}}>+</button>
         </div>
       }/>
 
@@ -366,7 +366,7 @@ function PatientListPage({onSelect,onNew,onImport,onCosts}){
             placeholder="Buscar por nome..."
             style={{width:'100%',padding:'10px 36px 10px 38px',border:'1.5px solid '+(search?V.forest3:V.sand3),borderRadius:12,fontSize:14,background:V.white,outline:'none',color:V.ink,boxShadow:'0 1px 3px rgba(0,0,0,0.05)',transition:'border-color .2s'}}
           />
-          {search&&<button onClick={()=>{setSearch('');searchRef.current?.focus()}} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:V.ink3,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',width:24,height:24,borderRadius:'50%'}}>✕</button>}
+          {search&&<button onClick={()=>{setSearch('');searchRef.current?.focus()}} title="Limpar busca" style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:V.ink3,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',width:24,height:24,borderRadius:'50%'}}>✕</button>}
         </div>
 
         {/* Filtros + Sort */}
@@ -581,7 +581,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit}){
   return(
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
       <Header title={patient.full_name} subtitle="Ficha do paciente" onBack={onBack} right={
-        <button onClick={()=>onEdit(patientId)} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:14}}>✏️</button>
+        <button onClick={()=>onEdit(patientId)} title="Editar paciente" style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:14}}>✏️</button>
       }/>
       <div style={{flex:1,overflow:'auto',padding:16,paddingBottom:32}}>
 
@@ -634,7 +634,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit}){
                   </div>
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
                     <Badge type="draft" text="Rascunho"/>
-                    <button onClick={()=>setConfirmDel({id:r.id,version:r.version})} style={{background:'none',border:'none',color:V.ink4,cursor:'pointer',fontSize:16,padding:4}}>🗑</button>
+                    <button onClick={()=>setConfirmDel({id:r.id,version:r.version})} title="Remover relatório" style={{background:'none',border:'none',color:V.ink4,cursor:'pointer',fontSize:16,padding:4}}>🗑</button>
                   </div>
                 </div>
               </Card>
@@ -891,8 +891,8 @@ function ReportViewPage({reportId,patientId,onBack}){
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
       <Header title={'RAN v'+rpt.version} subtitle={rpt.patient_id} onBack={onBack} right={
         !editing&&<div style={{display:'flex',gap:6}}>
-          <button onClick={downloadDocx} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ .docx</button>
-          <button onClick={()=>setEditing(true)} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Editar</button>
+          <button onClick={downloadDocx} title="Baixar como Word (.docx)" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ .docx</button>
+          <button onClick={()=>{if(rpt.drive_file_id){window.open('https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit','_blank')}else{alert('Arquivo ainda não disponível no Drive. Tente baixar o .docx primeiro.')}}} title="Editar no Google Docs" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Docs</button>
         </div>
       }/>
       {/* Tabs */}
@@ -903,21 +903,7 @@ function ReportViewPage({reportId,patientId,onBack}){
       </div>}
       <div style={{flex:1,overflow:'auto',padding:16}}>
 
-        {/* ── MODO EDIÇÃO RICH TEXT ── */}
-        {editing&&<>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-            <div style={{fontSize:13,fontWeight:600,color:V.forest}}>Editando RAN v{rpt.version}</div>
-            <div style={{display:'flex',gap:8}}>
-              <Btn onClick={()=>{setEditing(false);setEditContent(rpt.content_html||rpt.content_md||'');setSecaoAtiva(null)}} variant="ghost" small>Cancelar</Btn>
-              <Btn onClick={saveEdit} loading={saving} small icon="💾">Salvar</Btn>
-            </div>
-          </div>
-          <div style={{fontSize:12,color:V.ink3,marginBottom:12,padding:'8px 12px',background:V.sage3,borderRadius:8,lineHeight:1.6}}>
-            ✏️ Use a barra de ferramentas para formatar. As alterações são salvas automaticamente no Drive ao clicar em Salvar.
-          </div>
-          <RichEditor value={editContent} onChange={setEditContent} height={500}/>
-          <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
-        </>}
+
 
         {/* ── MODO VISUALIZAÇÃO ── */}
         {!editing&&tab==='relatorio'&&(
@@ -931,6 +917,10 @@ function ReportViewPage({reportId,patientId,onBack}){
                 {revisao&&<div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:700,color:revisao.score_qualidade>=70?V.green:V.amber,fontFamily:"'Fraunces',serif"}}>{revisao.score_qualidade}</div><div style={{fontSize:10,color:V.ink3}}>score</div></div>}{rpt.ran_meta&&JSON.parse(rpt.ran_meta).custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${JSON.parse(rpt.ran_meta).custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
               </div>
             </Card>
+            {rpt.drive_file_id&&<div style={{background:V.sage3,borderRadius:12,padding:'10px 14px',marginBottom:12,fontSize:12,color:V.forest,display:'flex',gap:8,alignItems:'flex-start',border:'1px solid '+V.sage}}>
+              <span>🔄</span>
+              <div>Edições feitas no <strong>Google Docs</strong> ou <strong>Word</strong> são sincronizadas automaticamente aqui em alguns minutos.</div>
+            </div>}
             <div style={{background:V.white,borderRadius:16,border:'1px solid '+V.sand2,padding:'24px 20px',paddingBottom:40,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
               {rpt.content_html?<div className="md" dangerouslySetInnerHTML={{__html:rpt.content_html}}/>:<Markdown content={rpt.content_md||'Conteúdo não disponível'}/>}
             </div>
@@ -1187,10 +1177,36 @@ function CostsPage({onBack}){
   )
 }
 
-/* ── APP ROUTER ── */
+/* ── APP ROUTER com URL hash para persistência ── */
+function parseHash(){
+  const hash=window.location.hash.slice(1)||'list';
+  const [name,...rest]=hash.split('/');
+  const params={};
+  for(let i=0;i<rest.length;i+=2)if(rest[i])params[rest[i]]=rest[i+1];
+  return{name,...params}
+}
+
+function buildHash(name,params={}){
+  const parts=[name];
+  Object.entries(params).forEach(([k,v])=>{if(v)parts.push(k,v)});
+  return '#'+parts.join('/')
+}
+
 function App(){
-  const[page,setPage]=useState({name:'list'});
-  const nav=(name,params={})=>setPage({name,...params});
+  const[page,setPage]=useState(parseHash);
+
+  // Sincroniza URL → estado ao carregar e ao navegar com botão voltar do browser
+  useEffect(()=>{
+    const onHash=()=>setPage(parseHash());
+    window.addEventListener('hashchange',onHash);
+    return()=>window.removeEventListener('hashchange',onHash)
+  },[]);
+
+  const nav=(name,params={})=>{
+    window.location.hash=buildHash(name,params);
+    setPage({name,...params})
+  };
+
   return <>
     {page.name==='list'&&<PatientListPage onSelect={id=>nav('detail',{patientId:id})} onNew={()=>nav('new')} onImport={()=>nav('import')} onCosts={()=>nav('costs')}/>}
     {page.name==='costs'&&<CostsPage onBack={()=>nav('list')}/>}
