@@ -208,6 +208,11 @@ module.exports = {
   createPatientFolders,
   uploadFile,
   uploadBuffer,
+  uploadAsGoogleDoc,
+  updateGoogleDoc,
+  exportAsDocx,
+  exportAsPdf,
+  isGoogleDoc,
   listFiles,
   listSubfolders,
   downloadFile,
@@ -217,3 +222,73 @@ module.exports = {
   FOLDER_STRUCTURE,
   CATEGORY_TO_FOLDER
 };
+// Faz upload de conteúdo Markdown ou HTML como Google Doc nativo
+// O Drive converte automaticamente para formato editável no Docs
+async function uploadAsGoogleDoc(content, fileName, folderId, mimeTypeOrigem = 'text/markdown') {
+  const drive = getDrive();
+  const { Readable } = require('stream');
+
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName.replace(/\.(md|docx|html)$/, ''), // Google Doc não tem extensão
+      mimeType: 'application/vnd.google-apps.document', // converte para Google Doc
+      parents: [folderId]
+    },
+    media: {
+      mimeType: mimeTypeOrigem,
+      body: Readable.from(Buffer.from(content, 'utf-8'))
+    },
+    fields: 'id, name, webViewLink'
+  });
+
+  return res.data;
+}
+
+// Atualiza conteúdo de um Google Doc existente
+async function updateGoogleDoc(fileId, content, mimeTypeOrigem = 'text/markdown') {
+  const drive = getDrive();
+  const { Readable } = require('stream');
+
+  // Para atualizar um Google Doc, precisa deletar e recriar o conteúdo
+  // ou usar a Docs API — aqui usamos o método de mídia do Drive
+  const res = await drive.files.update({
+    fileId,
+    media: {
+      mimeType: mimeTypeOrigem,
+      body: Readable.from(Buffer.from(content, 'utf-8'))
+    },
+    fields: 'id, name, modifiedTime'
+  });
+
+  return res.data;
+}
+
+// Exporta Google Doc como .docx (Word) — sempre a versão mais atual
+async function exportAsDocx(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.export(
+    { fileId, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    { responseType: 'arraybuffer' }
+  );
+  return Buffer.from(res.data);
+}
+
+// Exporta Google Doc como PDF — sempre a versão mais atual
+async function exportAsPdf(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.export(
+    { fileId, mimeType: 'application/pdf' },
+    { responseType: 'arraybuffer' }
+  );
+  return Buffer.from(res.data);
+}
+
+// Verifica se um arquivo do Drive é Google Doc nativo
+async function isGoogleDoc(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.get({
+    fileId,
+    fields: 'mimeType'
+  });
+  return res.data.mimeType === 'application/vnd.google-apps.document';
+}

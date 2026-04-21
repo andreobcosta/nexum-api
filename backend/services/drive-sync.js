@@ -231,32 +231,45 @@ async function processarNotificacao(patientId, folderId) {
   }
 }
 
-// Sincroniza um DOCX editado no Drive de volta para o Firestore
+// Sincroniza Google Doc editado no Drive de volta para o Firestore
+// Funciona para edições no Google Docs E para .docx importados manualmente
 async function sincronizarArquivoDosDrive(patientId, reportId, driveFileId, fileName) {
-  const drive = getDrive();
+  const driveService = require('./drive');
   const db = getDb();
 
   try {
-    // Baixa o arquivo do Drive
-    const res = await drive.files.get(
-      { fileId: driveFileId, alt: 'media' },
-      { responseType: 'arraybuffer' }
-    );
-    const buffer = Buffer.from(res.data);
+    let buffer;
+    let isGoogleDoc = false;
 
-    // Converte para HTML via Claude
+    // Verifica se é Google Doc nativo ou arquivo comum
+    try {
+      isGoogleDoc = await driveService.isGoogleDoc(driveFileId);
+    } catch(e) { /* assume não é Google Doc */ }
+
+    if (isGoogleDoc) {
+      // Exporta Google Doc como .docx para processamento
+      console.log(`[DriveSync] Exportando Google Doc ${driveFileId} como .docx...`);
+      buffer = await driveService.exportAsDocx(driveFileId);
+    } else {
+      // Baixa arquivo .docx diretamente
+      console.log(`[DriveSync] Baixando arquivo .docx ${driveFileId}...`);
+      buffer = await driveService.downloadFile(driveFileId);
+    }
+
+    // Converte para HTML via Claude (preservação fiel de formatação)
     const htmlContent = await docxParaHtml(buffer, fileName);
 
     // Atualiza no Firestore
     await db.collection('patients').doc(patientId).collection('reports').doc(reportId).update({
       content_html: htmlContent,
+      drive_is_google_doc: isGoogleDoc,
       status: 'reviewed',
       reviewed_at: new Date().toISOString(),
       sync_source: 'drive',
       last_synced_at: new Date().toISOString()
     });
 
-    console.log(`[DriveSync] ✓ Relatório ${reportId} sincronizado do Drive`);
+    console.log(`[DriveSync] ✓ Relatório ${reportId} sincronizado do Drive (${isGoogleDoc ? 'Google Doc' : 'DOCX'})`);
   } catch (err) {
     console.error(`[DriveSync] Erro ao sincronizar ${reportId}:`, err.message);
   }

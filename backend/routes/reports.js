@@ -152,21 +152,36 @@ router.post('/generate/:patient_id', async (req, res) => {
     const reportId = uuidv4();
     const now = new Date().toISOString();
 
-    const reportFileName = `RAN_${patient.full_name.replace(/\s+/g, '_')}_v${version}_${now.slice(0, 10)}.md`;
+    const nomeBase = patient.full_name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+    const reportFileName = `RAN_${nomeBase}_v${version}`;
     let driveFileId = null;
+    let driveIsGoogleDoc = false;
 
     try {
       const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
-      const reportBuffer = Buffer.from(reportContent, 'utf-8');
-      const driveFile = await drive.uploadBuffer(reportBuffer, reportFileName, 'text/markdown', subfolderId);
+      // Salva como Google Doc nativo — editável no Docs e exportável como .docx
+      const driveFile = await drive.uploadAsGoogleDoc(reportContent, reportFileName, subfolderId, 'text/markdown');
       driveFileId = driveFile.id;
+      driveIsGoogleDoc = true;
+      console.log('[Reports] Google Doc criado no Drive:', driveFile.name, '—', driveFile.webViewLink);
     } catch (uploadErr) {
-      console.warn('Could not upload to Drive:', uploadErr.message);
+      console.warn('[Reports] Erro ao criar Google Doc — tentando .md:', uploadErr.message);
+      try {
+        const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
+        const reportBuffer = Buffer.from(reportContent, 'utf-8');
+        const driveFile = await drive.uploadBuffer(reportBuffer, reportFileName + '.md', 'text/markdown', subfolderId);
+        driveFileId = driveFile.id;
+      } catch (fallbackErr) {
+        console.warn('[Reports] Fallback .md também falhou:', fallbackErr.message);
+      }
     }
 
     await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(reportId).set({
       patient_id: req.params.patient_id, version,
-      drive_file_id: driveFileId, content_md: reportContent, ran_meta: JSON.stringify(ranMeta),
+      drive_file_id: driveFileId,
+      drive_is_google_doc: driveIsGoogleDoc,
+      content_md: reportContent,
+      ran_meta: JSON.stringify(ranMeta),
       status: 'draft', generated_at: now, reviewed_at: null
     });
     await db.collection('patients').doc(req.params.patient_id).update({
@@ -357,7 +372,9 @@ router.get('/:report_id', async (req, res) => {
 
 module.exports = router;
 
-// GET /api/reports/:patient_id/:report_id/docx — gera e retorna DOCX
+// GET /api/reports/:patient_id/:report_id/docx — exporta como .docx
+// Google Doc nativo: exporta via Drive API (versão sempre atual)
+// Arquivo comum: gera via docx-generator local
 router.get('/:patient_id/:report_id/docx', async (req, res) => {
   try {
     const db = getDb();
@@ -366,15 +383,68 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
     const report = doc.data();
     const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
     const patient = patientDoc.data();
-    const { gerarDocx } = require('../services/docx-generator');
-    const buffer = await gerarDocx(report.content_md || '', report.patient_id);
-    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_'); const fileName = `RAN_${nomeBase}_v${report.version}.docx`;
+    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+    const fileName = 'RAN_' + nomeBase + '_v' + report.version + '.docx';
+    let buffer;
+    if (report.drive_file_id) {
+      try {
+        const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
+        if (isDoc) {
+          console.log('[DOCX] Exportando Google Doc como .docx:', report.drive_file_id);
+          buffer = await drive.exportAsDocx(report.drive_file_id);
+        }
+      } catch (e) { console.warn('[DOCX] Falha exportar Google Doc:', e.message); }
+    }
+    if (!buffer) {
+      console.log('[DOCX] Gerando DOCX local a partir do Markdown');
+      const { gerarDocx } = require('../services/docx-generator');
+      buffer = await gerarDocx(report.content_md || '', report.patient_id);
+    }
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
+    res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
   } catch (err) {
     console.error('[DOCX]', err);
     res.status(500).json({ error: 'Erro ao gerar DOCX', details: err.message });
+  }
+});
+
+
+
+// GET /api/reports/:patient_id/:report_id/pdf — exporta como PDF
+router.get('/:patient_id/:report_id/pdf', async (req, res) => {
+  try {
+    const db = getDb();
+    const doc = await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(req.params.report_id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
+    const report = doc.data();
+    const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
+    const patient = patientDoc.data();
+    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+    const fileName = 'RAN_' + nomeBase + '_v' + report.version + '.pdf';
+
+    if (!report.drive_file_id) {
+      return res.status(400).json({ error: 'Relatório sem arquivo no Drive. Gere o .docx primeiro.' });
+    }
+
+    try {
+      const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
+      if (!isDoc) {
+        return res.status(400).json({ error: 'Exportação PDF disponível apenas para Google Docs. Baixe o .docx e converta localmente.' });
+      }
+      const buffer = await drive.exportAsPdf(report.drive_file_id);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
+      res.setHeader('Content-Length', buffer.length);
+      res.send(buffer);
+    } catch (err) {
+      console.error('[PDF]', err.message);
+      res.status(500).json({ error: 'Erro ao exportar PDF', details: err.message });
+    }
+  } catch (err) {
+    console.error('[PDF]', err);
+    res.status(500).json({ error: 'Erro ao gerar PDF', details: err.message });
   }
 });
 
@@ -406,40 +476,18 @@ router.patch('/:patient_id/:report_id', async (req, res) => {
 
     await ref.update(updates);
 
-    // Regenera DOCX e atualiza no Drive em background
+    // Atualiza Google Doc no Drive em background
     setImmediate(async () => {
       try {
-        const { gerarDocxDeHtml } = require('../services/docx-generator');
-        const buffer = await gerarDocxDeHtml(conteudo, req.params.patient_id);
-        const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
-        const fileName = `RAN_${nomeBase}_v${reportData.version}_revisado.docx`;
-
-        // Se já tem arquivo no Drive, atualiza; senão cria novo
         if (reportData.drive_file_id) {
-          const { google } = require('googleapis');
-          const auth = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            process.env.GOOGLE_REDIRECT_URI
-          );
-          auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
-          const driveApi = google.drive({ version: 'v3', auth });
-          const { Readable } = require('stream');
-          await driveApi.files.update({
-            fileId: reportData.drive_file_id,
-            requestBody: { name: fileName },
-            media: {
-              mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              body: Readable.from(buffer)
-            }
-          });
-          console.log('[PATCH] DOCX atualizado no Drive:', fileName);
+          await drive.updateGoogleDoc(reportData.drive_file_id, conteudo, content_html ? 'text/html' : 'text/markdown');
+          console.log('[PATCH] Google Doc atualizado no Drive');
         } else {
-          // Cria novo arquivo no Drive
-          const subfolderId = await require('../services/drive').getSubfolderId(patient.drive_folder_id, 'relatorio');
-          const driveFile = await require('../services/drive').uploadBuffer(buffer, fileName, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', subfolderId);
-          await ref.update({ drive_file_id: driveFile.id });
-          console.log('[PATCH] Novo DOCX criado no Drive:', fileName);
+          const nomeBase = (patient && patient.full_name ? patient.full_name : 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+          const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
+          const driveFile = await drive.uploadAsGoogleDoc(conteudo, 'RAN_' + nomeBase + '_v' + reportData.version, subfolderId, content_html ? 'text/html' : 'text/markdown');
+          await ref.update({ drive_file_id: driveFile.id, drive_is_google_doc: true });
+          console.log('[PATCH] Novo Google Doc criado no Drive');
         }
       } catch (driveErr) {
         console.warn('[PATCH] Erro ao atualizar Drive:', driveErr.message);

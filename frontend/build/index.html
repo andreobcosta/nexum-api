@@ -892,7 +892,19 @@ function ReportViewPage({reportId,patientId,onBack}){
       <Header title={'RAN v'+rpt.version} subtitle={rpt.patient_id} onBack={onBack} right={
         !editing&&<div style={{display:'flex',gap:6}}>
           <button onClick={downloadDocx} title="Baixar como Word (.docx)" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ .docx</button>
-          <button onClick={()=>{if(rpt.drive_file_id){window.open('https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit','_blank')}else{alert('Arquivo ainda não disponível no Drive. Tente baixar o .docx primeiro.')}}} title="Editar no Google Docs" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Docs</button>
+          {rpt.drive_is_google_doc&&<button onClick={()=>window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank')} title="Baixar como PDF" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ .pdf</button>}
+          <button onClick={()=>{
+              if(rpt.drive_file_id){
+                // Google Doc nativo: abre direto no editor
+                // DOCX comum: abre no Drive (usuário pode importar para Docs)
+                const url=rpt.drive_is_google_doc
+                  ?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit'
+                  :'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view';
+                window.open(url,'_blank');
+              }else{
+                alert('Gere o download .docx primeiro para criar o arquivo no Drive.');
+              }
+            }} title={rpt.drive_is_google_doc?"Editar no Google Docs":"Abrir no Drive"} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ {rpt.drive_is_google_doc?'Docs':'Drive'}</button>
         </div>
       }/>
       {/* Tabs */}
@@ -917,9 +929,15 @@ function ReportViewPage({reportId,patientId,onBack}){
                 {revisao&&<div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:700,color:revisao.score_qualidade>=70?V.green:V.amber,fontFamily:"'Fraunces',serif"}}>{revisao.score_qualidade}</div><div style={{fontSize:10,color:V.ink3}}>score</div></div>}{rpt.ran_meta&&JSON.parse(rpt.ran_meta).custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${JSON.parse(rpt.ran_meta).custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
               </div>
             </Card>
-            {rpt.drive_file_id&&<div style={{background:V.sage3,borderRadius:12,padding:'10px 14px',marginBottom:12,fontSize:12,color:V.forest,display:'flex',gap:8,alignItems:'flex-start',border:'1px solid '+V.sage}}>
-              <span>🔄</span>
-              <div>Edições feitas no <strong>Google Docs</strong> ou <strong>Word</strong> são sincronizadas automaticamente aqui em alguns minutos.</div>
+            {rpt.drive_file_id&&<div style={{background:V.sage3,borderRadius:12,padding:'12px 14px',marginBottom:12,fontSize:12,color:V.forest,border:'1px solid '+V.sage}}>
+              <div style={{fontWeight:700,marginBottom:6,fontSize:13}}>🔄 Sincronização automática ativa</div>
+              <div style={{lineHeight:1.7,color:V.ink2}}>
+                {rpt.drive_is_google_doc
+                  ?<span>✏️ Clique em <strong>Docs</strong> para editar no Google Docs · As alterações são sincronizadas aqui automaticamente.</span>
+                  :<span>📂 Clique em <strong>Drive</strong> para visualizar · Para editar, baixe o <strong>.docx</strong>, edite no Word e reimporte para o Drive.</span>
+                }
+              </div>
+              <div style={{marginTop:6,fontSize:11,color:V.ink3}}>Última sincronização: {rpt.last_synced_at?new Date(rpt.last_synced_at).toLocaleString('pt-BR'):'Na geração'}</div>
             </div>}
             <div style={{background:V.white,borderRadius:16,border:'1px solid '+V.sand2,padding:'24px 20px',paddingBottom:40,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
               {rpt.content_html?<div className="md" dangerouslySetInnerHTML={{__html:rpt.content_html}}/>:<Markdown content={rpt.content_md||'Conteúdo não disponível'}/>}
