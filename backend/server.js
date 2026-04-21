@@ -6,19 +6,28 @@ if (process.env.NODE_ENV !== 'production') { require('dotenv').config({ path: '/
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+const { verifyAuth } = require('./middleware/verifyAuth');
+
+// CORS restrito ao domínio da aplicação
+const allowedOrigins = [
+  'https://nexum-api-xvxoj574uq-uc.a.run.app',
+  'https://app.patriziasantarem.com',
+  'http://localhost:3000',
+  'http://localhost:3001'
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error('Origem não permitida pelo CORS'));
+  },
+  credentials: true
+}));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, '..', 'frontend', 'build')));
 
-app.use('/api/patients', require('./routes/patients'));
-app.use('/api/files', require('./routes/files'));
-app.use('/api/reports', require('./routes/reports'));
-app.use('/api/import', require('./routes/import'));
-app.use('/api/transcribe', require('./routes/transcribe'));
-app.use('/api/costs', require('./routes/costs'));
-app.use('/api/drive/webhook', require('./routes/drive-webhook'));
-
+// ── Rotas públicas (sem auth) ──
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -28,13 +37,25 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/drive/webhook', require('./routes/drive-webhook')); // webhook do Drive é chamado pelo Google
 
+// ── Rotas protegidas (requerem JWT válido) ──
+app.use('/api/patients', verifyAuth, require('./routes/patients'));
+app.use('/api/files', verifyAuth, require('./routes/files'));
+app.use('/api/reports', verifyAuth, require('./routes/reports'));
+app.use('/api/import', verifyAuth, require('./routes/import'));
+app.use('/api/transcribe', verifyAuth, require('./routes/transcribe'));
+app.use('/api/costs', verifyAuth, require('./routes/costs'));
+
+// Fallback para o frontend (SPA)
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(__dirname, '..', 'frontend', 'build', 'index.html'));
   }
 });
 
+// Handler de erros global
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Erro interno do servidor', details: err.message });
@@ -43,7 +64,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n  Nexum API v2.0 — http://0.0.0.0:${PORT} — commit: ${process.env.DEPLOY_SHA || 'local'}\n`);
 
-  // Registra webhooks do Drive para todos os pacientes (em background)
   if (process.env.APP_URL) {
     setTimeout(async () => {
       try {
@@ -54,9 +74,8 @@ app.listen(PORT, '0.0.0.0', async () => {
       } catch (err) {
         console.error('[DriveSync] Erro na inicialização:', err.message);
       }
-    }, 5000); // aguarda 5s para o servidor estabilizar
+    }, 5000);
 
-    // Renova webhooks a cada 12h
     setInterval(async () => {
       try {
         const { renovarWebhooksVencendo } = require('./services/drive-sync');
