@@ -851,7 +851,7 @@ const SECOES_RAN=['QUEIXA PRINCIPAL','ANAMNESE','RESUMO DO RELATÓRIO ESCOLAR','
 
 function ReportViewPage({reportId,patientId,onBack}){
   const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);const[tab,setTab]=useState('relatorio');
-  const[editing,setEditing]=useState(false);const[editContent,setEditContent]=useState('');const[secaoAtiva,setSecaoAtiva]=useState(null);const[saving,setSaving]=useState(false);const[toast,setToast]=useState(null);const[showEditConfirm,setShowEditConfirm]=useState(false);const[showDownloadMenu,setShowDownloadMenu]=useState(false);const[showDownloadMenu,setShowDownloadMenu]=useState(false);const[showEditConfirm,setShowEditConfirm]=useState(false);
+  const[editing,setEditing]=useState(false);const[editContent,setEditContent]=useState('');const[secaoAtiva,setSecaoAtiva]=useState(null);const[saving,setSaving]=useState(false);const[toast,setToast]=useState(null);const[showEditConfirm,setShowEditConfirm]=useState(false);const[showDownloadMenu,setShowDownloadMenu]=useState(false);
   useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setEditContent(r.content_html||r.content_md||'')}).catch(console.error).finally(()=>setLoading(false))},[reportId,patientId]);
 
   const getSecao=titulo=>{
@@ -901,29 +901,7 @@ function ReportViewPage({reportId,patientId,onBack}){
           <button onClick={()=>setShowEditConfirm(true)} title="Editar relatório" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Editar</button>
         </div>
       }/>
-      {/* Modal confirmação edição */}
-      {showEditConfirm&&<div className="overlay" onClick={()=>setShowEditConfirm(false)}>
-        <div className="sheet" onClick={e=>e.stopPropagation()}>
-          <div className="sheet-handle"/>
-          <div style={{fontSize:17,fontWeight:700,marginBottom:8,fontFamily:"'Fraunces',serif",color:V.ink}}>Editar relatório</div>
-          <div style={{fontSize:14,color:V.ink2,lineHeight:1.65,marginBottom:20}}>Escolha onde deseja editar o relatório:</div>
-          <div style={{display:'flex',flexDirection:'column',gap:10}}>
-            <Btn onClick={()=>{
-              setShowEditConfirm(false);
-              if(rpt.drive_file_id){
-                const url=rpt.drive_is_google_doc
-                  ?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit'
-                  :'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view';
-                window.open(url,'_blank');
-              }else{
-                alert('Arquivo ainda não disponível no Drive. Baixe o .docx primeiro.');
-              }
-            }} full icon="📝">Abrir no Google Docs</Btn>
-            <Btn onClick={()=>{setShowEditConfirm(false);downloadDocx()}} variant="secondary" full icon="💻">Baixar .docx para editar no Word</Btn>
-            <Btn onClick={()=>setShowEditConfirm(false)} variant="ghost" full>Cancelar</Btn>
-          </div>
-        </div>
-      </div>}
+      {showEditConfirm&&<div className="overlay" onClick={()=>setShowEditConfirm(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="sheet-handle"/><div style={{fontSize:17,fontWeight:700,marginBottom:8,fontFamily:"'Fraunces',serif",color:V.ink}}>Editar relatório</div><div style={{fontSize:14,color:V.ink2,lineHeight:1.65,marginBottom:20}}>Como deseja editar?</div><div style={{display:'flex',flexDirection:'column',gap:10}}><Btn onClick={()=>{setShowEditConfirm(false);rpt.drive_file_id?window.open(rpt.drive_is_google_doc?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit':'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view','_blank'):alert('Baixe o .docx primeiro.')}} full icon="📝">Abrir no Google Docs</Btn><Btn onClick={()=>{setShowEditConfirm(false);downloadDocx()}} variant="secondary" full icon="💻">Baixar .docx para Word</Btn><Btn onClick={()=>setShowEditConfirm(false)} variant="ghost" full>Cancelar</Btn></div></div></div>}
 
       {/* Tabs */}
       {!editing&&<div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,padding:'0 16px',flexShrink:0}}>
