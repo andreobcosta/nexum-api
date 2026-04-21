@@ -34,7 +34,7 @@ steps:
       - '--memory=512Mi'
       - '--timeout=300'
       - '--set-env-vars=GCP_PROJECT_ID=nexum-production,FIRESTORE_DATABASE_ID=nexum-db,NODE_ENV=production,DEPLOY_SHA=$COMMIT_SHA'
-      - '--set-secrets=ANTHROPIC_API_KEY=nexum-anthropic-key:latest,GOOGLE_CLIENT_ID=nexum-google-client-id:latest,GOOGLE_CLIENT_SECRET=nexum-google-client-secret:latest,GOOGLE_REFRESH_TOKEN=nexum-google-refresh-token:latest,GOOGLE_DRIVE_ROOT_FOLDER_ID=nexum-google-drive-folder-id:latest,/app/secrets/nexum-service-account.json=nexum-service-account:latest'
+      - '--set-secrets=ANTHROPIC_API_KEY=nexum-anthropic-key:latest,GOOGLE_CLIENT_ID=nexum-google-client-id:latest,GOOGLE_CLIENT_SECRET=nexum-google-client-secret:latest,GOOGLE_REFRESH_TOKEN=nexum-google-refresh-token:latest,GOOGLE_DRIVE_ROOT_FOLDER_ID=nexum-google-drive-folder-id:latest,/app/secrets/nexum-service-account.json=nexum-service-account:latest,JWT_SECRET=nexum-jwt-secret:latest,ALLOWED_EMAIL=nexum-allowed-email:latest,GOOGLE_LOGIN_CLIENT_ID=nexum-login-client-id:latest,GOOGLE_LOGIN_CLIENT_SECRET=nexum-login-client-secret:latest'
       - '--service-account=nexum-api@nexum-production.iam.gserviceaccount.com'
       - '--no-traffic'
     waitFor: ['push']
@@ -46,7 +46,6 @@ steps:
     args:
       - '-c'
       - |
-        # Pega a URL da nova revisão (sem tráfego ainda)
         REVISION=$(gcloud run revisions list \
           --service nexum-api \
           --region us-central1 \
@@ -62,7 +61,6 @@ steps:
         echo "Revisão: $$REVISION"
         echo "Verificando saúde em: $$REVISION_URL/api/health"
 
-        # Tenta até 5 vezes com 10s de intervalo
         for i in 1 2 3 4 5; do
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             --max-time 15 \
@@ -96,14 +94,13 @@ steps:
       - '--to-latest'
     waitFor: ['health-check']
 
-  # ── STEP 6: Rollback automático se algo falhou (só executa em caso de erro)
+  # ── STEP 6: Rollback automático se algo falhou
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'rollback'
     entrypoint: bash
     args:
       - '-c'
       - |
-        # Pega a revisão anterior (segunda mais recente)
         PREVIOUS=$(gcloud run revisions list \
           --service nexum-api \
           --region us-central1 \
@@ -121,10 +118,6 @@ steps:
           echo "Nenhuma revisão anterior disponível para rollback"
         fi
     waitFor: ['health-check']
-
-# Substitui step de rollback apenas se health check falhar
-# (Cloud Build executa todos os steps por padrão — o rollback
-#  é idempotente: se health passou, o tráfego já foi liberado)
 
 options:
   logging: CLOUD_LOGGING_ONLY
