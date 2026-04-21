@@ -31,7 +31,7 @@ router.post('/patients', upload.single('file'), async (req, res) => {
     let added = 0;
     let skipped = 0;
     const errors = [];
-    const batch = db.batch();
+    let batch = db.batch();
     let batchCount = 0;
 
     for (let i = 1; i < lines.length; i++) {
@@ -72,6 +72,7 @@ router.post('/patients', upload.single('file'), async (req, res) => {
 
       if (batchCount === 400) {
         await batch.commit();
+        batch = db.batch(); // novo batch — o anterior está encerrado após commit
         batchCount = 0;
       }
     }

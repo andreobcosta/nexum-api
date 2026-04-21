@@ -369,9 +369,6 @@ router.get('/:report_id', async (req, res) => {
   }
 });
 
-
-module.exports = router;
-
 // GET /api/reports/:patient_id/:report_id/docx — exporta como .docx
 // Google Doc nativo: exporta via Drive API (versão sempre atual)
 // Arquivo comum: gera via docx-generator local

@@ -33,7 +33,6 @@ function getDrive() {
   return google.drive({ version: 'v3', auth: getAuth() });
 }
 
-// Create a folder in Google Drive
 async function createFolder(name, parentId) {
   const drive = getDrive();
   const res = await drive.files.create({
@@ -47,15 +46,12 @@ async function createFolder(name, parentId) {
   return res.data;
 }
 
-// Create the full patient folder structure
 async function createPatientFolders(patientName, year) {
   const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
   const folderName = `${patientName} — ${year}`;
 
-  // Create patient root folder
   const patientFolder = await createFolder(folderName, rootFolderId);
 
-  // Create subfolders
   const subfolders = {};
   for (const subName of FOLDER_STRUCTURE) {
     const sub = await createFolder(subName, patientFolder.id);
@@ -69,7 +65,6 @@ async function createPatientFolders(patientName, year) {
   };
 }
 
-// Upload a file to a specific folder
 async function uploadFile(filePath, fileName, mimeType, folderId) {
   const drive = getDrive();
   const fs = require('fs');
@@ -89,7 +84,6 @@ async function uploadFile(filePath, fileName, mimeType, folderId) {
   return res.data;
 }
 
-// Upload from buffer (for transcriptions, generated reports)
 async function uploadBuffer(buffer, fileName, mimeType, folderId) {
   const drive = getDrive();
   const { Readable } = require('stream');
@@ -109,7 +103,74 @@ async function uploadBuffer(buffer, fileName, mimeType, folderId) {
   return res.data;
 }
 
-// List files in a folder
+// Faz upload de conteúdo Markdown ou HTML como Google Doc nativo
+async function uploadAsGoogleDoc(content, fileName, folderId, mimeTypeOrigem = 'text/markdown') {
+  const drive = getDrive();
+  const { Readable } = require('stream');
+
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName.replace(/\.(md|docx|html)$/, ''),
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [folderId]
+    },
+    media: {
+      mimeType: mimeTypeOrigem,
+      body: Readable.from(Buffer.from(content, 'utf-8'))
+    },
+    fields: 'id, name, webViewLink'
+  });
+
+  return res.data;
+}
+
+// Atualiza conteúdo de um Google Doc existente
+async function updateGoogleDoc(fileId, content, mimeTypeOrigem = 'text/markdown') {
+  const drive = getDrive();
+  const { Readable } = require('stream');
+
+  const res = await drive.files.update({
+    fileId,
+    media: {
+      mimeType: mimeTypeOrigem,
+      body: Readable.from(Buffer.from(content, 'utf-8'))
+    },
+    fields: 'id, name, modifiedTime'
+  });
+
+  return res.data;
+}
+
+// Exporta Google Doc como .docx
+async function exportAsDocx(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.export(
+    { fileId, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    { responseType: 'arraybuffer' }
+  );
+  return Buffer.from(res.data);
+}
+
+// Exporta Google Doc como PDF
+async function exportAsPdf(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.export(
+    { fileId, mimeType: 'application/pdf' },
+    { responseType: 'arraybuffer' }
+  );
+  return Buffer.from(res.data);
+}
+
+// Verifica se um arquivo do Drive é Google Doc nativo
+async function isGoogleDoc(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.get({
+    fileId,
+    fields: 'mimeType'
+  });
+  return res.data.mimeType === 'application/vnd.google-apps.document';
+}
+
 async function listFiles(folderId) {
   const drive = getDrive();
   const res = await drive.files.list({
@@ -120,7 +181,6 @@ async function listFiles(folderId) {
   return res.data.files || [];
 }
 
-// List subfolders of a patient folder
 async function listSubfolders(patientFolderId) {
   const drive = getDrive();
   const res = await drive.files.list({
@@ -131,7 +191,6 @@ async function listSubfolders(patientFolderId) {
   return res.data.files || [];
 }
 
-// Download a file content (for sending to Claude)
 async function downloadFile(fileId) {
   const drive = getDrive();
   const res = await drive.files.get(
@@ -141,7 +200,6 @@ async function downloadFile(fileId) {
   return Buffer.from(res.data);
 }
 
-// Get folder ID by category for a patient
 async function getSubfolderId(patientFolderId, category) {
   const folderName = CATEGORY_TO_FOLDER[category];
   if (!folderName) throw new Error(`Invalid category: ${category}`);
@@ -153,7 +211,6 @@ async function getSubfolderId(patientFolderId, category) {
   return folder.id;
 }
 
-// Get completeness status for a patient
 async function getPatientCompleteness(patientFolderId) {
   const subfolders = await listSubfolders(patientFolderId);
   const status = {};
@@ -170,12 +227,10 @@ async function getPatientCompleteness(patientFolderId) {
   return status;
 }
 
-// Collect all patient data for RAN generation
 async function collectPatientData(patientFolderId) {
   const completeness = await getPatientCompleteness(patientFolderId);
   const allData = {};
 
-  // Pastas excluídas do pipeline de análise — não são input clínico
   const EXCLUDED_FOLDERS = ['04 - Relatórios'];
 
   for (const [folderName, info] of Object.entries(completeness)) {
@@ -204,6 +259,7 @@ async function collectPatientData(patientFolderId) {
   return allData;
 }
 
+// ── EXPORTS — todas as funções definidas acima ──
 module.exports = {
   createPatientFolders,
   uploadFile,
@@ -222,73 +278,3 @@ module.exports = {
   FOLDER_STRUCTURE,
   CATEGORY_TO_FOLDER
 };
-// Faz upload de conteúdo Markdown ou HTML como Google Doc nativo
-// O Drive converte automaticamente para formato editável no Docs
-async function uploadAsGoogleDoc(content, fileName, folderId, mimeTypeOrigem = 'text/markdown') {
-  const drive = getDrive();
-  const { Readable } = require('stream');
-
-  const res = await drive.files.create({
-    requestBody: {
-      name: fileName.replace(/\.(md|docx|html)$/, ''), // Google Doc não tem extensão
-      mimeType: 'application/vnd.google-apps.document', // converte para Google Doc
-      parents: [folderId]
-    },
-    media: {
-      mimeType: mimeTypeOrigem,
-      body: Readable.from(Buffer.from(content, 'utf-8'))
-    },
-    fields: 'id, name, webViewLink'
-  });
-
-  return res.data;
-}
-
-// Atualiza conteúdo de um Google Doc existente
-async function updateGoogleDoc(fileId, content, mimeTypeOrigem = 'text/markdown') {
-  const drive = getDrive();
-  const { Readable } = require('stream');
-
-  // Para atualizar um Google Doc, precisa deletar e recriar o conteúdo
-  // ou usar a Docs API — aqui usamos o método de mídia do Drive
-  const res = await drive.files.update({
-    fileId,
-    media: {
-      mimeType: mimeTypeOrigem,
-      body: Readable.from(Buffer.from(content, 'utf-8'))
-    },
-    fields: 'id, name, modifiedTime'
-  });
-
-  return res.data;
-}
-
-// Exporta Google Doc como .docx (Word) — sempre a versão mais atual
-async function exportAsDocx(fileId) {
-  const drive = getDrive();
-  const res = await drive.files.export(
-    { fileId, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-    { responseType: 'arraybuffer' }
-  );
-  return Buffer.from(res.data);
-}
-
-// Exporta Google Doc como PDF — sempre a versão mais atual
-async function exportAsPdf(fileId) {
-  const drive = getDrive();
-  const res = await drive.files.export(
-    { fileId, mimeType: 'application/pdf' },
-    { responseType: 'arraybuffer' }
-  );
-  return Buffer.from(res.data);
-}
-
-// Verifica se um arquivo do Drive é Google Doc nativo
-async function isGoogleDoc(fileId) {
-  const drive = getDrive();
-  const res = await drive.files.get({
-    fileId,
-    fields: 'mimeType'
-  });
-  return res.data.mimeType === 'application/vnd.google-apps.document';
-}

@@ -14,7 +14,7 @@ const upload = multer({
 });
 
 // Transcreve áudio em background após upload
-async function transcribeInBackground(patient_id, fileId, driveFileId, subfolderId, originalName, mimeType) {
+async function transcribeInBackground(patient_id, fileId, driveFileId, subfolderId, originalName, mimeType, bgPath = null) {
   const db = getDb();
   const fileRef = db.collection('patients').doc(patient_id).collection('files').doc(fileId);
   let tempPath = null;
@@ -52,6 +52,7 @@ async function transcribeInBackground(patient_id, fileId, driveFileId, subfolder
     try { await fileRef.update({ status: 'transcription_failed' }); } catch (_) {}
   } finally {
     if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    if (bgPath && fs.existsSync(bgPath)) fs.unlinkSync(bgPath); // cleanup do arquivo _bg
   }
 }
 
@@ -72,7 +73,6 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
     const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
 
     for (const file of req.files) {
-      let savedPath = file.path; // guarda para transcrição background
       try {
         const fileId = uuidv4();
         const isAudio = file.mimetype.startsWith('audio/') || file.mimetype === 'video/webm';
@@ -105,21 +105,16 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
 
         // Transcrição automática em background para áudios
         if (isAudio) {
-          // Copia o arquivo antes de deletar
           const bgPath = file.path + '_bg';
           fs.copyFileSync(file.path, bgPath);
-          transcribeInBackground(patient_id, fileId, driveFile.id, subfolderId, file.originalname, file.mimetype)
+          transcribeInBackground(patient_id, fileId, driveFile.id, subfolderId, file.originalname, file.mimetype, bgPath)
             .catch(e => console.error('[AUTO-TRANSCRIÇÃO] Falha silenciosa:', e.message));
-          savedPath = bgPath; // não deleta o original ainda
         }
 
       } catch (fileErr) {
         errors.push({ name: file.originalname, error: fileErr.message });
       } finally {
         if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        if (savedPath && savedPath !== file.path && fs.existsSync(savedPath) && !savedPath.endsWith('_bg')) {
-          fs.unlinkSync(savedPath);
-        }
       }
     }
 
