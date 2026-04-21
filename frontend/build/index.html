@@ -512,7 +512,7 @@ function FileItem({f,patientId,onDeleted,onError}){
         {f.transcription&&<div style={{fontSize:11,color:V.green,marginTop:2}}>✓ Transcrito</div>}
         {f.file_type==='audio'&&!f.transcription&&<div style={{fontSize:11,color:V.amber,marginTop:2}}>⏳ Não transcrito</div>}
       </div>
-      {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" style={{color:V.blue,fontSize:13,textDecoration:'none',flexShrink:0,padding:'4px 6px'}}>🔗</a>}
+      {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" title="Ver no Google Drive" style={{color:V.blue,fontSize:13,textDecoration:'none',flexShrink:0,padding:'4px 6px'}}>🔗</a>}
       <button onClick={del} disabled={deleting} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:12,padding:'4px 8px',borderRadius:8,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400,transition:'all .2s'}}>
         {deleting?'...':confirm?'Confirmar exclusão?':'🗑'}
       </button>
@@ -895,13 +895,13 @@ function ReportViewPage({reportId,patientId,onBack}){
             <button onClick={()=>setShowDownloadMenu(m=>!m)} title="Baixar arquivo" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ Baixar</button>
             {showDownloadMenu&&<div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'#fff',borderRadius:10,boxShadow:'0 4px 20px rgba(0,0,0,0.15)',padding:'6px',zIndex:100,minWidth:160,border:'1px solid '+V.sand2}}>
               <button onClick={()=>{downloadDocx();setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📄 Word (.docx)</button>
-              {rpt.drive_is_google_doc&&<button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>}
+              {<button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>}
             </div>}
           </div>
-          <button onClick={()=>setShowEditConfirm(true)} title="Editar relatório" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Editar</button>
+          <button onClick={()=>{if(rpt.drive_file_id){window.open(rpt.drive_is_google_doc?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit':'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view','_blank')}else{alert('Gere o relatório primeiro para criar o arquivo no Drive.')}}} title="Editar no Google Docs" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>✏️ Editar</button>
         </div>
       }/>
-      {showEditConfirm&&<div className="overlay" onClick={()=>setShowEditConfirm(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="sheet-handle"/><div style={{fontSize:17,fontWeight:700,marginBottom:8,fontFamily:"'Fraunces',serif",color:V.ink}}>Editar relatório</div><div style={{fontSize:14,color:V.ink2,lineHeight:1.65,marginBottom:20}}>Como deseja editar?</div><div style={{display:'flex',flexDirection:'column',gap:10}}><Btn onClick={()=>{setShowEditConfirm(false);rpt.drive_file_id?window.open(rpt.drive_is_google_doc?'https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit':'https://drive.google.com/file/d/'+rpt.drive_file_id+'/view','_blank'):alert('Baixe o .docx primeiro.')}} full icon="📝">Abrir no Google Docs</Btn><Btn onClick={()=>{setShowEditConfirm(false);downloadDocx()}} variant="secondary" full icon="💻">Baixar .docx para Word</Btn><Btn onClick={()=>setShowEditConfirm(false)} variant="ghost" full>Cancelar</Btn></div></div></div>}
+      
 
       {/* Tabs */}
       {!editing&&<div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,padding:'0 16px',flexShrink:0}}>
