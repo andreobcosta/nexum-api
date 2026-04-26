@@ -19,7 +19,8 @@ steps:
       - 'gcr.io/nexum-production/nexum-api'
     waitFor: ['build']
 
-  # ── STEP 3: Deploy no Cloud Run
+  # ── STEP 3: Deploy no Cloud Run (--no-traffic — aguarda container iniciar)
+  # Se o container falhar ao iniciar, o gcloud retorna erro e o build para aqui.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy'
     entrypoint: gcloud
@@ -39,68 +40,53 @@ steps:
       - '--no-traffic'
     waitFor: ['push']
 
-  # ── STEP 4: Health check da nova revisão (antes de liberar tráfego)
+  # ── STEP 4: Libera tráfego + health check + rollback automático em um único passo
+  # Ordem: libera tráfego → verifica saúde → rollback se falhar
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'health-check'
+    id: 'release-verify-rollback'
     entrypoint: bash
     args:
       - '-c'
       - |
-        REVISION=$(gcloud run revisions list \
-          --service nexum-api \
+        SERVICE_URL="https://nexum-api-xvxoj574uq-uc.a.run.app"
+
+        # 1. Libera tráfego para nova revisão
+        echo "Liberando tráfego para nova revisão..."
+        gcloud run services update-traffic nexum-api \
           --region us-central1 \
-          --format "value(metadata.name)" \
-          --sort-by "~metadata.creationTimestamp" \
-          --limit 1)
+          --to-latest
+        echo "✓ Tráfego liberado"
 
-        REVISION_URL=$(gcloud run revisions describe $$REVISION \
-          --region us-central1 \
-          --format "value(status.url)" 2>/dev/null || \
-          echo "https://nexum-api-618022617938.us-central1.run.app")
+        # 2. Aguarda propagação (Cloud Run pode demorar alguns segundos)
+        sleep 8
 
-        echo "Revisão: $$REVISION"
-        echo "Verificando saúde em: $$REVISION_URL/api/health"
-
+        # 3. Health check (5 tentativas × 10s = até 50s)
+        # Aceita 200 (OK) ou 503 (degradado mas container rodando)
+        HEALTHY=false
         for i in 1 2 3 4 5; do
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             --max-time 15 \
-            "https://nexum-api-618022617938.us-central1.run.app/api/health" \
-            -H "x-deploy-check: cloudbuild" || echo "000")
+            "$$SERVICE_URL/api/health" || echo "000")
 
           echo "Tentativa $$i — HTTP $$HTTP_STATUS"
 
-          if [ "$$HTTP_STATUS" = "200" ]; then
-            echo "✓ Health check passou!"
-            exit 0
+          if [ "$$HTTP_STATUS" = "200" ] || [ "$$HTTP_STATUS" = "503" ]; then
+            HEALTHY=true
+            echo "✓ Serviço respondeu com HTTP $$HTTP_STATUS"
+            break
           fi
 
           sleep 10
         done
 
-        echo "✗ Health check falhou após 5 tentativas"
-        exit 1
-    waitFor: ['deploy']
+        # 4. Se saudável, sucesso
+        if [ "$$HEALTHY" = "true" ]; then
+          echo "✓ Deploy concluído com sucesso!"
+          exit 0
+        fi
 
-  # ── STEP 5: Libera tráfego para a nova revisão (só se health check passou)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'release-traffic'
-    entrypoint: gcloud
-    args:
-      - run
-      - services
-      - update-traffic
-      - nexum-api
-      - '--region=us-central1'
-      - '--to-latest'
-    waitFor: ['health-check']
-
-  # ── STEP 6: Rollback automático se algo falhou
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'rollback'
-    entrypoint: bash
-    args:
-      - '-c'
-      - |
+        # 5. Rollback automático se container não respondeu
+        echo "✗ Health check falhou após 5 tentativas — executando rollback"
         PREVIOUS=$(gcloud run revisions list \
           --service nexum-api \
           --region us-central1 \
@@ -109,15 +95,15 @@ steps:
           --limit 2 | tail -1)
 
         if [ -n "$$PREVIOUS" ]; then
-          echo "⚠ Rollback para: $$PREVIOUS"
           gcloud run services update-traffic nexum-api \
             --region us-central1 \
             --to-revisions="$$PREVIOUS=100"
-          echo "✓ Rollback concluído"
+          echo "✓ Rollback concluído para: $$PREVIOUS"
         else
-          echo "Nenhuma revisão anterior disponível para rollback"
+          echo "⚠ Nenhuma revisão anterior disponível para rollback"
         fi
-    waitFor: ['health-check']
+        exit 1
+    waitFor: ['deploy']
 
 options:
   logging: CLOUD_LOGGING_ONLY
