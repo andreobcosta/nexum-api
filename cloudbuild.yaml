@@ -4,6 +4,7 @@ steps:
     id: 'build'
     args:
       - 'build'
+      - '--no-cache'
       - '-t'
       - 'gcr.io/nexum-production/nexum-api:$COMMIT_SHA'
       - '-t'

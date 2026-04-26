@@ -409,4 +409,13 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 - Revisor lê o RAN **COMPLETO** — nunca truncado (decisão arquitetural definitiva)
 
 ## Idioma
-Sempre responder em português brasileiro, independentemente do idioma da pergunta.
+Sempre responda em português brasileiro em todas as interações, explicações, commits e comentários de código.
+
+## Padrão de Commits
+- Sempre em português brasileiro
+- Formato: `tipo: descrição curta`
+- Tipos: `feat`, `fix`, `refactor`, `docs`, `chore`
+- Exemplos:
+  - `feat: adicionar progresso SSE na geração de RAN`
+  - `fix: corrigir lock pipeline_ativo no Firestore`
+  - `refactor: substituir Identificador pelo Compressor`

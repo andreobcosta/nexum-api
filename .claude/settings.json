@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd*)",
+      "Bash(git*)",
+      "Bash(npm*)",
+      "Bash(grep*)",
+      "Bash(curl*)",
+      "Bash(head*)",
+      "Bash(cat*)",
+      "Bash(node*)"
+    ]
+  },
+  "language": "pt-BR"
+}
