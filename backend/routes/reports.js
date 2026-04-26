@@ -21,6 +21,12 @@ router.post('/generate/:patient_id', async (req, res) => {
     const patient = { id: patientDoc.id, ...patientDoc.data() };
     if (!patient.drive_folder_id) return res.status(400).json({ error: 'Paciente sem pasta no Drive' });
 
+    if (patientDoc.data()?.pipeline_ativo) {
+      return res.status(409).json({ error: 'Geração já em andamento para este paciente' });
+    }
+    const patRef = db.collection('patients').doc(req.params.patient_id);
+    await patRef.update({ pipeline_ativo: true, pipeline_iniciado_em: new Date().toISOString() });
+
     const filesSnap = await db.collection('patients').doc(req.params.patient_id).collection('files').get();
     const fileCounts = {};
     for (const f of filesSnap.docs) {
@@ -122,8 +128,13 @@ router.post('/generate/:patient_id', async (req, res) => {
     );
     console.log(`[Reports] Arquivos coletados (${totalFiles} total, ${comConteudo} com conteúdo):`, filesLog.join(' | '));
 
-    const systemPrompt = getSystemPrompt();
-    const ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage);
+    let ranResult;
+    try {
+      const systemPrompt = getSystemPrompt();
+      ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage);
+    } finally {
+      await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null });
+    }
     const reportContent = ranResult.relatorio;
     const ranMeta = {
       dossie: ranResult.dossie,
@@ -184,8 +195,10 @@ router.post('/generate/:patient_id', async (req, res) => {
       ran_meta: JSON.stringify(ranMeta),
       status: 'draft', generated_at: now, reviewed_at: null
     });
+    const { FieldValue } = require('@google-cloud/firestore');
     await db.collection('patients').doc(req.params.patient_id).update({
-      status: 'relatorio_gerado', updated_at: now
+      status: 'relatorio_gerado', updated_at: now,
+      reports_count: FieldValue.increment(1)
     });
     await db.collection('activity_log').add({
       patient_id: req.params.patient_id, action: 'report_generated',
@@ -239,6 +252,8 @@ router.delete('/:patient_id/:report_id', async (req, res) => {
     if (!doc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
     const { version } = doc.data();
     await ref.delete();
+    const { FieldValue: FV } = require('@google-cloud/firestore');
+    await db.collection('patients').doc(req.params.patient_id).update({ reports_count: FV.increment(-1) });
     await db.collection('activity_log').add({
       patient_id: req.params.patient_id, action: 'report_deleted',
       details: JSON.stringify({ version }), created_at: new Date().toISOString()

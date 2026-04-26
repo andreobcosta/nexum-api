@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db/firestore');
+const { FieldValue } = require('@google-cloud/firestore');
 const drive = require('../services/drive');
 const { transcribeAudio } = require('../services/transcription');
 
@@ -119,7 +120,12 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
     }
 
     const now = new Date().toISOString();
-    await db.collection('patients').doc(patient_id).update({ updated_at: now });
+    const countField = category + '_count';
+    const countUpdate = { updated_at: now };
+    if (['anamnese', 'teste', 'sessao', 'externo'].includes(category)) {
+      countUpdate[countField] = FieldValue.increment(results.length);
+    }
+    await db.collection('patients').doc(patient_id).update(countUpdate);
     await db.collection('activity_log').add({
       patient_id, action: 'files_uploaded',
       details: JSON.stringify({ count: results.length, category }),
@@ -196,7 +202,12 @@ router.delete('/:patient_id/:file_id', async (req, res) => {
     const file = doc.data();
     await ref.delete();
     const now = new Date().toISOString();
-    await db.collection('patients').doc(req.params.patient_id).update({ updated_at: now });
+    const catField = (file.category || '') + '_count';
+    const delUpdate = { updated_at: now };
+    if (['anamnese', 'teste', 'sessao', 'externo'].includes(file.category)) {
+      delUpdate[catField] = FieldValue.increment(-1);
+    }
+    await db.collection('patients').doc(req.params.patient_id).update(delUpdate);
     await db.collection('activity_log').add({
       patient_id: req.params.patient_id, action: 'file_deleted',
       details: JSON.stringify({ name: file.original_name, category: file.category }),

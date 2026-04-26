@@ -7,6 +7,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 const { verifyAuth } = require('./middleware/verifyAuth');
+const { getDb } = require('./db/firestore');
+const rateLimit = require('express-rate-limit');
 
 // CORS restrito ao domínio da aplicação
 const allowedOrigins = [
@@ -27,14 +29,18 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, '..', 'frontend', 'build')));
 
+// ── Rate limiting ──
+app.use('/api/', rateLimit({ windowMs: 60000, max: 100, standardHeaders: true }));
+app.use('/api/reports/generate', rateLimit({ windowMs: 300000, max: 3, message: { error: 'Máximo 3 gerações por 5 minutos' } }));
+
 // ── Rotas públicas (sem auth) ──
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    app: 'Nexum API',
-    version: '2.0.0',
-    commit: process.env.DEPLOY_SHA || 'local',
-    timestamp: new Date().toISOString()
+app.get('/api/health', async (req, res) => {
+  const checks = { firestore: false, anthropic_key: !!process.env.ANTHROPIC_API_KEY };
+  try { await getDb().collection('patients').limit(1).get(); checks.firestore = true; } catch {}
+  const degraded = !checks.firestore;
+  res.status(degraded ? 503 : 200).json({
+    status: degraded ? 'degraded' : 'ok',
+    version: '2.0.0', commit: process.env.DEPLOY_SHA || 'local', checks
   });
 });
 app.use('/api/auth', require('./routes/auth'));

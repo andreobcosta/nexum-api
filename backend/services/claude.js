@@ -16,25 +16,40 @@ function calcCost(model, inputTokens, outputTokens) {
   };
 }
 
-async function callClaude(systemPrompt, userMessage, maxTokens = 16000, model = MODEL_SONNET) {
-  const res = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model, max_tokens: maxTokens, system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }]
-    })
-  });
-  if (!res.ok) { const err = await res.text(); throw new Error('Claude API error ' + res.status + ': ' + err); }
-  const data = await res.json();
-  const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-  const usage = data.usage || {};
-  const cost = calcCost(model, usage.input_tokens || 0, usage.output_tokens || 0);
-  return { text, cost };
+async function callClaude(systemPrompt, userMessage, maxTokens = 16000, model = MODEL_SONNET, tentativa = 1) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120000);
+  try {
+    const res = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31'
+      },
+      body: JSON.stringify({
+        model, max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+    if (res.status === 429 || res.status === 529) {
+      if (tentativa >= 4) throw new Error('Rate limit após 4 tentativas');
+      const delay = [0, 15000, 30000, 60000][tentativa];
+      await new Promise(r => setTimeout(r, delay));
+      return callClaude(systemPrompt, userMessage, maxTokens, model, tentativa + 1);
+    }
+    if (!res.ok) { const err = await res.text(); throw new Error('Claude API error ' + res.status + ': ' + err); }
+    const data = await res.json();
+    const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const usage = data.usage || {};
+    const cost = calcCost(model, usage.input_tokens || 0, usage.output_tokens || 0);
+    return { text, cost };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Monta pacote de dados já processado (transcrições + textos extraídos de PDFs)
@@ -229,7 +244,10 @@ async function agentRedator(systemPromptRAN, patientInfo, dossie, onProgress) {
 
   onProgress?.('redator', 'Agente Redator redigindo relatório...');
 
-  const { text: relatorio, cost } = await callClaude(systemPromptRAN, userMessage, 16000, MODEL_SONNET);
+  const { text: relatorio, cost } = await callClaude(
+    [{ type: 'text', text: systemPromptRAN, cache_control: { type: 'ephemeral' } }],
+    userMessage, 16000, MODEL_SONNET
+  );
 
   onProgress?.('redator', 'Relatório redigido ✓');
   return { relatorio, cost };
@@ -267,12 +285,15 @@ Seções obrigatórias: Cabeçalho, Queixa Principal, Anamnese, Resumo Escolar, 
 
 aprovado=true se score >= 60. Responda APENAS com JSON válido.`;
 
-  // Envia RAN COMPLETO — sem truncamento
-  const userMessage = 'Revise o RAN do paciente ' + patientInfo.full_name +
-    '.\n\nRelatório completo:\n' + relatorio;
+  // Envia RAN COMPLETO + dossiê resumido — sem truncamento do RAN
+  const dossieResumo = dossie && !dossie.parse_error
+    ? JSON.stringify(dossie, null, 2).substring(0, 2000)
+    : '[dossiê não disponível]';
+  const userMessage = 'Dossiê do Analítico (resumo):\n' + dossieResumo +
+    '\n\nRAN gerado:\n' + relatorio;
 
-  // Haiku é suficiente para validação estrutural
-  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 4000, MODEL_HAIKU);
+  // Sonnet para validação clínica — Haiku perde atenção em RANs longos (bug B3)
+  const { text: raw, cost } = await callClaude(systemPrompt, userMessage, 4000, MODEL_SONNET);
 
   let revisao;
   try {
@@ -281,9 +302,9 @@ aprovado=true se score >= 60. Responda APENAS com JSON válido.`;
     console.log("[REVISOR] JSON completo: " + JSON.stringify(revisao));
   } catch (e) {
     revisao = {
-      aprovado: true,
+      aprovado: false,
       score_qualidade: 0,
-      problemas_criticos: [],
+      problemas_criticos: ['parse_error — JSON da revisão inválido'],
       alertas: ['Revisão automática não parseada — verificar manualmente'],
       secoes_ausentes: []
     };

@@ -9,20 +9,16 @@ router.get('/', async (req, res) => {
   try {
     const db = getDb();
     const snap = await db.collection('patients').orderBy('updated_at', 'desc').get();
-    const patients = [];
-    for (const doc of snap.docs) {
+    const patients = snap.docs.map(doc => {
       const p = { id: doc.id, ...doc.data() };
-      const filesSnap = await db.collection('patients').doc(doc.id).collection('files').get();
-      const reportsSnap = await db.collection('patients').doc(doc.id).collection('reports').get();
-      const counts = { anamnese: 0, teste: 0, sessao: 0, externo: 0 };
-      for (const f of filesSnap.docs) {
-        const cat = f.data().category;
-        if (counts[cat] !== undefined) counts[cat]++;
-      }
-      p.completeness = { ...counts, reports: reportsSnap.size };
-      p.ready_for_ran = counts.anamnese > 0 && counts.teste > 0 && counts.sessao > 0;
-      patients.push(p);
-    }
+      const anamnese = p.anamnese_count || 0;
+      const teste = p.teste_count || 0;
+      const sessao = p.sessao_count || 0;
+      const externo = p.externo_count || 0;
+      p.completeness = { anamnese, teste, sessao, externo, reports: p.reports_count || 0 };
+      p.ready_for_ran = anamnese > 0 && teste > 0 && sessao > 0;
+      return p;
+    });
     res.json(patients);
   } catch (err) {
     console.error(err);
@@ -78,6 +74,8 @@ router.post('/', async (req, res) => {
       guardians: guardians || null,
       drive_folder_id: driveResult.rootFolderId,
       status: 'em_avaliacao',
+      anamnese_count: 0, teste_count: 0, sessao_count: 0, externo_count: 0, reports_count: 0,
+      pipeline_ativo: false,
       created_at: now,
       updated_at: now
     });
