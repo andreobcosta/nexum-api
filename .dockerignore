@@ -1,0 +1,9 @@
+node_modules
+.git
+*.md
+backend/.env
+backend/nexum-service-account.json
+frontend/node_modules
+.env*
+backend/data/
+backend/temp/

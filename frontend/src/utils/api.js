@@ -2,7 +2,7 @@ const BASE = '/api';
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem("nexum_token") || ""}`, ...options.headers },
     ...options,
   });
   if (!res.ok) {
@@ -21,11 +21,13 @@ export const api = {
   deletePatient: (id) => request(`/patients/${id}`, { method: 'DELETE' }),
 
   // Files
-  uploadFile: (formData) =>
-    fetch(`${BASE}/files/upload`, { method: 'POST', body: formData }).then(async (r) => {
+  uploadFile: (formData) => {
+    const token = localStorage.getItem("nexum_token");
+    return fetch(`${BASE}/files/upload`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData }).then(async (r) => {
       if (!r.ok) throw new Error((await r.json()).error);
       return r.json();
-    }),
+    });
+  },
   saveNote: (data) => request('/files/note', { method: 'POST', body: JSON.stringify(data) }),
   getPatientFiles: (patientId) => request(`/files/patient/${patientId}`),
   deleteFile: (patientId, fileId) => request(`/files/${patientId}/${fileId}`, { method: 'DELETE' }),

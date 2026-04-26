@@ -29,7 +29,7 @@ function tituloPrincipal(texto) {
     spacing: { before: 0, after: 120 },
     children: [new TextRun({
       text: texto, bold: true, size: 28,
-      color: VERDE, font: 'Calibri'
+      color: VERDE, font: 'Arial'
     })]
   });
 }
@@ -42,7 +42,7 @@ function tituloSecao(texto) {
     border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: VERDE, space: 4 } },
     children: [new TextRun({
       text: limpo.toUpperCase(), bold: true, size: 22,
-      color: VERDE, font: 'Calibri'
+      color: VERDE, font: 'Arial'
     })]
   });
 }
@@ -53,7 +53,7 @@ function subTitulo(texto) {
     spacing: { before: 160, after: 40 },
     children: [new TextRun({
       text: limpo, bold: true, size: 20,
-      color: '2C3828', font: 'Calibri'
+      color: '2C3828', font: 'Arial'
     })]
   });
 }
@@ -83,10 +83,10 @@ function processarInline(texto, opcoes = {}) {
       italics: isItalic || opcoes.italic,
       size: opcoes.size || 20,
       color: opcoes.color || '2C2C2A',
-      font: 'Calibri'
+      font: 'Arial'
     }));
   }
-  return runs.length ? runs : [new TextRun({ text: texto, size: 20, font: 'Calibri', color: '2C2C2A' })];
+  return runs.length ? runs : [new TextRun({ text: texto, size: 20, font: 'Arial', color: '2C2C2A' })];
 }
 
 function itemLista(texto) {
@@ -95,7 +95,7 @@ function itemLista(texto) {
     spacing: { before: 30, after: 30 },
     indent: { left: 360, hanging: 180 },
     children: [
-      new TextRun({ text: '• ', color: VERDE, bold: true, size: 20, font: 'Calibri' }),
+      new TextRun({ text: '• ', color: VERDE, bold: true, size: 20, font: 'Arial' }),
       ...processarInline(limpo, { size: 20 })
     ]
   });
@@ -144,7 +144,7 @@ function gerarTabela(rows) {
                 bold: rowIdx === 0 || colIdx === 0,
                 color: rowIdx === 0 ? BRANCO : '2C2C2A',
                 size: 18,
-                font: 'Calibri'
+                font: 'Arial'
               })]
             })]
           })
@@ -163,8 +163,8 @@ function gerarHeader() {
         border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: VERDE, space: 4 } },
         spacing: { after: 80 },
         children: [
-          new TextRun({ text: 'Relatório de Avaliação Neuropsicopedagógica', size: 16, color: CINZA, font: 'Calibri' }),
-          new TextRun({ text: '     |     Patrízia Almeida Santarém Costa', size: 16, color: CINZA, font: 'Calibri', italics: true }),
+          new TextRun({ text: 'Relatório de Avaliação Neuropsicopedagógica', size: 16, color: CINZA, font: 'Arial' }),
+          new TextRun({ text: '     |     Patrízia Almeida Santarém Costa', size: 16, color: CINZA, font: 'Arial', italics: true }),
         ]
       })
     ]
@@ -179,8 +179,8 @@ function gerarFooter() {
         spacing: { before: 80 },
         alignment: AlignmentType.CENTER,
         children: [
-          new TextRun({ text: 'Neuropsicopedagoga Clínica — Uberlândia, MG     |     Pág. ', size: 16, color: CINZA, font: 'Calibri' }),
-          new TextRun({ children: [PageNumber.CURRENT], size: 16, color: CINZA, font: 'Calibri' }),
+          new TextRun({ text: 'Neuropsicopedagoga Clínica — Uberlândia, MG     |     Pág. ', size: 16, color: CINZA, font: 'Arial' }),
+          new TextRun({ children: [PageNumber.CURRENT], size: 16, color: CINZA, font: 'Arial' }),
         ]
       })
     ]
@@ -305,12 +305,12 @@ function gerarBlocoIdentificacao(linhasSecao1) {
         borders, width: { size: 2800, type: WidthType.DXA },
         margins: { top: 80, bottom: 80, left: 160, right: 80 },
         shading: { fill: 'F3F0EB', type: ShadingType.CLEAR },
-        children: [new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20, color: VERDE, font: 'Calibri' })] })]
+        children: [new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20, color: VERDE, font: 'Arial' })] })]
       }),
       new TableCell({
         borders, width: { size: 6226, type: WidthType.DXA },
         margins: { top: 80, bottom: 80, left: 160, right: 80 },
-        children: [new Paragraph({ children: [new TextRun({ text: valor, size: 20, font: 'Calibri', color: '2C2C2A' })] })]
+        children: [new Paragraph({ children: [new TextRun({ text: valor, size: 20, font: 'Arial', color: '2C2C2A' })] })]
       })
     ]
   });
@@ -344,7 +344,7 @@ async function gerarDocx(contentMd, nomeArquivo) {
   const doc = new Document({
     styles: {
       default: {
-        document: { run: { font: 'Calibri', size: 20, color: '2C2C2A' } }
+        document: { run: { font: 'Arial', size: 20, color: '2C2C2A' } }
       }
     },
     sections: [{
@@ -363,7 +363,7 @@ async function gerarDocx(contentMd, nomeArquivo) {
           spacing: { before: 240, after: 60 },
           children: [new TextRun({
             text: 'RELATÓRIO DE AVALIAÇÃO NEUROPSICOPEDAGÓGICA',
-            bold: true, size: 26, color: VERDE, font: 'Calibri'
+            bold: true, size: 26, color: VERDE, font: 'Arial'
           })]
         }),
         new Paragraph({
@@ -371,7 +371,7 @@ async function gerarDocx(contentMd, nomeArquivo) {
           spacing: { before: 0, after: 240 },
           children: [new TextRun({
             text: 'Patrízia Almeida Santarém Costa — Neuropsicopedagoga Clínica',
-            size: 18, color: CINZA, font: 'Calibri', italics: true
+            size: 18, color: CINZA, font: 'Arial', italics: true
           })]
         }),
 
@@ -386,16 +386,16 @@ async function gerarDocx(contentMd, nomeArquivo) {
         paragrafoVazio(400),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: '_'.repeat(50), color: CINZA, size: 18, font: 'Calibri' })]
+          children: [new TextRun({ text: '_'.repeat(50), color: CINZA, size: 18, font: 'Arial' })]
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { before: 80 },
-          children: [new TextRun({ text: 'Patrízia Almeida Santarém Costa', bold: true, size: 20, color: VERDE, font: 'Calibri' })]
+          children: [new TextRun({ text: 'Patrízia Almeida Santarém Costa', bold: true, size: 20, color: VERDE, font: 'Arial' })]
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: 'Neuropsicopedagoga Clínica', size: 18, color: CINZA, font: 'Calibri', italics: true })]
+          children: [new TextRun({ text: 'Neuropsicopedagoga Clínica', size: 18, color: CINZA, font: 'Arial', italics: true })]
         }),
       ]
     }]
@@ -421,7 +421,7 @@ async function gerarDocxDeHtml(htmlContent, patientId) {
 
   const doc = new Document({
     styles: {
-      default: { document: { run: { font: 'Calibri', size: 20, color: '2C2C2A' } } }
+      default: { document: { run: { font: 'Arial', size: 20, color: '2C2C2A' } } }
     },
     sections: [{
       properties: {
@@ -465,7 +465,7 @@ function parsearHtmlParaDocx(html) {
     }
   }
 
-  return elementos.length > 0 ? elementos : [new Paragraph({ children: [new TextRun({ text: '', font: 'Calibri' })] })];
+  return elementos.length > 0 ? elementos : [new Paragraph({ children: [new TextRun({ text: '', font: 'Arial' })] })];
 }
 
 function extrairRunsDoHtml(html) {
@@ -496,7 +496,7 @@ function extrairRunsDoHtml(html) {
     if (texto.trim()) {
       runs.push(new TextRun({
         text: texto, bold, italics: italic, underline: underline ? {} : undefined,
-        color: color || '2C2C2A', font: 'Calibri', size: 20
+        color: color || '2C2C2A', font: 'Arial', size: 20
       }));
     }
   }

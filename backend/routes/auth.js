@@ -64,7 +64,7 @@ router.get('/callback', async (req, res) => {
     console.log('[Auth] Login bem-sucedido:', userInfo.email);
 
     // Redireciona para o app com o token na URL (frontend armazena em memória)
-    res.redirect(`/?token=${token}`);
+    res.redirect(`/#token=${token}`);
   } catch (err) {
     console.error('[Auth] Erro no callback:', err.message);
     res.redirect('/?auth_error=erro_interno');
