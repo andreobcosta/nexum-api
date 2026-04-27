@@ -1,5 +1,5 @@
 // Agente Transcritor — Google Cloud Speech-to-Text v2 com Chirp 2
-// + Agente Identificador de Locutores (Claude Haiku)
+// + Agente Compressor (Claude Haiku) — renomeia locutores + extrai repr. clínica em 1 chamada
 // Chirp 2: 11.6% WER, diarização nativa, $0.006/min
 // Migrado de Speech-to-Text v1 ($0.016/min) em abril/2026
 
@@ -99,33 +99,46 @@ function formatRawTranscription(results) {
   return lines.join('\n\n');
 }
 
-// Agente Identificador de Locutores — Claude Haiku
-// Analisa o contexto da conversa e renomeia os locutores pelo papel real
-async function identificarLocutores(transcricaoBruta, contexto = '') {
+// Agente Compressor — Claude Haiku
+// Uma chamada: renomeia locutores + extrai representação clínica estruturada
+// Custo: ~$0.019/par de áudios vs $0.039 do Identificador (−51%)
+async function comprimirTranscricao(transcricaoBruta, contexto = '') {
   if (!transcricaoBruta || !transcricaoBruta.includes('Locutor')) {
-    return transcricaoBruta; // Sem diarização, retorna como está
+    return { transcricaoRenomeada: transcricaoBruta, comprimido: null };
   }
 
-  const systemPrompt = `Você é um especialista em análise de transcrições de sessões clínicas neuropsicopedagógicas.
+  const systemPrompt = `Você é um especialista em análise de sessões clínicas neuropsicopedagógicas.
 
-Sua tarefa é analisar uma transcrição com locutores identificados genericamente (Locutor 1, Locutor 2, etc.) e renomear cada locutor pelo seu papel real na sessão, baseando-se no conteúdo e contexto das falas.
+Você receberá uma transcrição com locutores genéricos (Locutor 1, Locutor 2, etc.).
+Retorne APENAS um JSON válido com exatamente 4 campos:
 
-Regras de identificação:
-- **Neuropsicopedagoga (Patrízia):** faz perguntas técnicas e clínicas, conduz a sessão, usa terminologia profissional, pergunta sobre desenvolvimento, comportamento, escola, histórico
-- **Responsável (mãe/pai/avó/etc):** relata histórico da criança, descreve comportamentos, responde perguntas sobre o cotidiano, usa linguagem coloquial, fala em primeira pessoa sobre a família
-- **Segundo responsável:** quando há dois adultos responsáveis, o segundo geralmente complementa ou confirma falas do primeiro
-- **Criança:** falas curtas, simples, às vezes monossilábicas, responde perguntas diretas
-- **Outros (professor, médico, etc):** identifica pelo contexto se mencionado
+"transcricao_renomeada": string — transcrição completa com locutores renomeados pelo papel real:
+  - Patrízia: faz perguntas técnicas, conduz a sessão, usa terminologia clínica
+  - Mãe/Pai/Avó/Responsável: relata histórico, descreve comportamentos, linguagem coloquial
+  - Criança: falas curtas, simples, responde perguntas diretas
+  Mantenha TODO o conteúdo original sem resumir, omitir ou corrigir.
 
-Instruções:
-1. Analise o padrão de falas de cada locutor numerado
-2. Identifique o papel de cada um
-3. Substitua "Locutor X" pelo papel identificado (ex: "Patrízia", "Mãe", "Pai", "Avó", "Responsável", "Criança")
-4. Se não conseguir identificar com certeza, use "Responsável 1", "Responsável 2", etc.
-5. Mantenha TODO o conteúdo original — não resuma, não omita, não corrija
-6. Retorne APENAS a transcrição renomeada, sem explicações adicionais`;
+"locutores_identificados": objeto — mapa do rótulo original para o papel identificado.
+  Exemplo: { "L1": "Patrízia", "L2": "Mãe", "L3": "Criança" }
 
-  const userMessage = `${contexto ? `Contexto da sessão: ${contexto}\n\n` : ''}Transcrição para identificar locutores:\n\n${transcricaoBruta}`;
+"pontos_clinicos": objeto com os subcampos queixa, marcos_desenvolvimento, historico_escolar,
+  rotina, saude, historico_familiar. Normalizar coloquial para técnico sem alterar conteúdo factual.
+  Exemplo: "fica muito ligado no 220" → "apresenta agitação motora constante".
+  Se não houver informação para um subcampo, use null.
+
+"observacoes_comportamentais": array de strings — transcrição LITERAL de momentos relevantes.
+  Incluir OBRIGATORIAMENTE quando:
+  - Locutor demonstrou emoção perceptível (ansiedade, choro, negação, raiva, orgulho excessivo)
+  - Contradição entre relatos do mesmo locutor na mesma sessão
+  - Criança recusou, desviou ou não respondeu pergunta direta
+  - Responsável minimizou ou exagerou relato de forma perceptível
+  - Fala com carga diagnóstica que parafraseada perderia o sentido clínico
+  Formato: transcrição LITERAL, sem paráfrase, sem normalização.
+  Se não houver, use [].
+
+Retorne APENAS o JSON válido, sem markdown, sem texto adicional.`;
+
+  const userMessage = `${contexto ? `Contexto da sessão: ${contexto}\n\n` : ''}Transcrição para processar:\n\n${transcricaoBruta}`;
 
   try {
     const res = await fetch(ANTHROPIC_API_URL, {
@@ -144,22 +157,43 @@ Instruções:
     });
 
     if (!res.ok) {
-      console.warn('[Identificador] Erro na API Claude — mantendo rótulos genéricos');
-      return transcricaoBruta;
+      console.warn('[Compressor] Erro na API Claude — fallback para transcrição bruta');
+      return { transcricaoRenomeada: transcricaoBruta, comprimido: null };
     }
 
     const data = await res.json();
-    const transcricaoIdentificada = data.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n');
+    const rawText = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
 
-    console.log('[Identificador] Locutores identificados com sucesso');
-    return transcricaoIdentificada;
+    const usage = data.usage || {};
+    const cost = ((usage.input_tokens || 0) * 0.80 + (usage.output_tokens || 0) * 4.00) / 1_000_000;
+    console.log(`[Compressor] Processado — $${cost.toFixed(4)} (in:${usage.input_tokens} out:${usage.output_tokens})`);
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(rawText.trim());
+    } catch {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (match) { try { parsed = JSON.parse(match[0]); } catch { parsed = null; } }
+    }
+
+    if (!parsed || !parsed.transcricao_renomeada) {
+      console.warn('[Compressor] JSON inválido — fallback para transcrição bruta');
+      return { transcricaoRenomeada: transcricaoBruta, comprimido: null };
+    }
+
+    console.log('[Compressor] Compressão concluída com sucesso');
+    return {
+      transcricaoRenomeada: parsed.transcricao_renomeada,
+      comprimido: {
+        locutores_identificados: parsed.locutores_identificados || {},
+        pontos_clinicos: parsed.pontos_clinicos || {},
+        observacoes_comportamentais: parsed.observacoes_comportamentais || []
+      }
+    };
 
   } catch (err) {
-    console.warn('[Identificador] Falha — mantendo rótulos genéricos:', err.message);
-    return transcricaoBruta; // Fallback: retorna transcrição com rótulos genéricos
+    console.warn('[Compressor] Falha — fallback para transcrição bruta:', err.message);
+    return { transcricaoRenomeada: transcricaoBruta, comprimido: null };
   }
 }
 
@@ -222,12 +256,12 @@ async function transcribeAudio(filePath, mimeType, context = '') {
     const transcricaoBruta = formatRawTranscription(results);
     console.log(`[Chirp2] Transcrição bruta: ${transcricaoBruta.length} chars`);
 
-    // Etapa 2: Agente Identificador renomeia os locutores pelo papel real
-    console.log('[Identificador] Identificando papéis dos locutores...');
-    const transcricaoFinal = await identificarLocutores(transcricaoBruta, context);
-    console.log(`[Identificador] Transcrição final: ${transcricaoFinal.length} chars`);
+    // Etapa 2: Agente Compressor renomeia locutores + extrai representação clínica
+    console.log('[Compressor] Processando transcrição...');
+    const { transcricaoRenomeada, comprimido } = await comprimirTranscricao(transcricaoBruta, context);
+    console.log(`[Compressor] Transcrição renomeada: ${transcricaoRenomeada.length} chars`);
 
-    return transcricaoFinal;
+    return { transcricao: transcricaoRenomeada, comprimido };
 
   } catch (err) {
     console.error('[Chirp2] Erro — tentando fallback v1:', err.message);
@@ -266,7 +300,7 @@ async function transcribeAudioV1Fallback(filePath, mimeType, existingGcsFileName
 
     const [response] = await operation.promise();
     if (!response.results || response.results.length === 0) {
-      return '[Transcrição não disponível]';
+      return { transcricao: '[Transcrição não disponível]', comprimido: null };
     }
 
     const transcricaoBruta = response.results
@@ -274,8 +308,8 @@ async function transcribeAudioV1Fallback(filePath, mimeType, existingGcsFileName
       .filter(Boolean)
       .join('\n\n');
 
-    // Mesmo no fallback, tenta identificar os locutores
-    return await identificarLocutores(transcricaoBruta);
+    const { transcricaoRenomeada, comprimido } = await comprimirTranscricao(transcricaoBruta);
+    return { transcricao: transcricaoRenomeada, comprimido };
 
   } finally {
     if (uploadedHere && gcsFileName) await deleteFromGCS(gcsFileName);

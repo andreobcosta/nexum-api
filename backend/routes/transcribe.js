@@ -32,16 +32,18 @@ router.post('/file/:file_id', async (req, res) => {
     fs.writeFileSync(tempPath, buffer);
     const metadata = file.metadata ? JSON.parse(file.metadata) : {};
     const mimeType = metadata.mimeType || 'audio/webm';
-    const transcription = await transcribeAudio(tempPath, mimeType, file.original_name);
+    const resultado = await transcribeAudio(tempPath, mimeType, file.original_name);
+    const transcricao = resultado.transcricao;
+    const comprimido = resultado.comprimido;
     const now = new Date().toISOString();
-    await fileRef.update({ transcription, status: 'transcribed', transcribed_at: now });
+    await fileRef.update({ transcription: transcricao, transcricao_comprimida: comprimido || null, status: 'transcribed', transcribed_at: now });
     try {
       const txtName = file.original_name.replace(/\.[^.]+$/, '') + '_transcricao.txt';
-      const txtBuffer = Buffer.from('TRANSCRIÇÃO — ' + file.original_name + '\nGerada em: ' + now + '\n\n' + transcription, 'utf-8');
+      const txtBuffer = Buffer.from('TRANSCRIÇÃO — ' + file.original_name + '\nGerada em: ' + now + '\n\n' + transcricao, 'utf-8');
       await drive.uploadBuffer(txtBuffer, txtName, 'text/plain', file.drive_folder_id);
     } catch (driveErr) { console.warn('[Transcritor] Não salvou .txt no Drive:', driveErr.message); }
     await db.collection('activity_log').add({ patient_id, action: 'file_transcribed', details: JSON.stringify({ file_id: req.params.file_id, name: file.original_name }), created_at: now });
-    res.json({ message: 'Transcrição concluída', file_id: req.params.file_id, file_name: file.original_name, transcription, chars: transcription.length });
+    res.json({ message: 'Transcrição concluída', file_id: req.params.file_id, file_name: file.original_name, transcription: transcricao, chars: transcricao.length });
   } catch (err) {
     console.error('[Transcritor] Erro:', err);
     try { const db = getDb(); await db.collection('patients').doc(patient_id).collection('files').doc(req.params.file_id).update({ status: 'uploaded' }); } catch (_) {}
@@ -54,8 +56,8 @@ router.post('/file/:file_id', async (req, res) => {
 router.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
   try {
-    const transcription = await transcribeAudio(req.file.path, req.file.mimetype || 'audio/webm');
-    res.json({ message: 'Transcrição concluída', file_name: req.file.originalname, transcription, chars: transcription.length });
+    const resultado = await transcribeAudio(req.file.path, req.file.mimetype || 'audio/webm');
+    res.json({ message: 'Transcrição concluída', file_name: req.file.originalname, transcription: resultado.transcricao, chars: resultado.transcricao.length });
   } catch (err) {
     res.status(500).json({ error: 'Erro na transcrição', details: err.message });
   } finally {
