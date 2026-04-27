@@ -46,7 +46,7 @@ Sem linter ou framework de testes configurado.
 | Deploy frontend | Vercel (mesmo repositório GitHub) |
 | CI/CD | Cloud Build — push ao main → health check + rollback automático |
 | Memory / Timeout | 512Mi / 900s (corrigido em A3) |
-| Commit estável | c315932 / Sprint 2 parcial — D1+D3+AuthGuard+AuthHeader |
+| Commit estável | 884da9e / Sprint 2 — C1+C3+C4+E1+D1+D3 |
 
 **Nunca** editar código diretamente no Cloud Run. Alterações chegam via git push → Cloud Build.
 
@@ -92,14 +92,14 @@ Sem linter ou framework de testes configurado.
 | routes/auth.js | Google OAuth2 callback — gera JWT 30d, redireciona para hash | Corrigido A2 |
 | routes/patients.js | CRUD pacientes + contadores desnormalizados | Atualizado D4 |
 | routes/files.js | Upload/listagem + incremento de contadores | Atualizado D4 |
-| routes/reports.js | Geração com lock + score mínimo | Atualizado A6 |
+| routes/reports.js | Geração com lock + score mínimo + pipeline async | Atualizado E1 |
 | routes/transcribe.js | Transcrição de áudio | OK |
 | routes/costs.js | Custos por RAN | OK |
 | routes/drive-webhook.js | Notificações Drive | OK |
 | services/claude.js | Pipeline 3 agentes + timeout/retry + caching | Atualizado B1/B3/B4 |
 | services/drive.js | Drive: upload, export, update | OK |
 | services/drive-sync.js | Sync bidirecional webhooks Drive | Inativo sem APP_URL |
-| services/pdf-extractor.js | Extração PDF/imagem via vision | Pendente Sprint 2 (C1-C4) |
+| services/pdf-extractor.js | Extração PDF/imagem/DOCX + score legibilidade | Atualizado C1+C3+C4 |
 | services/transcription.js | STT Chirp 2 + Identificador | Pendente Sprint 3 (B5 Compressor) |
 | services/docx-generator.js | Gera DOCX — fonte Arial (corrigido E6) | Atualizado E6 |
 | prompts/system_prompt_ran.md | System prompt RAN — LOCK PERMANENTE | Nunca alterar ética/não-diagnóstico |
@@ -111,7 +111,7 @@ Sem linter ou framework de testes configurado.
 | App.jsx | Roteamento SPA + AuthGuard | Atualizado A1 |
 | utils/api.js | Funções fetch com Authorization header | Atualizado A4 |
 | pages/PatientsPage.jsx | Lista de pacientes | OK |
-| pages/PatientDetailPage.jsx | Detalhe + geração de RAN | Pendente SSE (E1) |
+| pages/PatientDetailPage.jsx | Detalhe + geração de RAN + polling job_id | Atualizado E1 |
 | pages/ReportPage.jsx | Visualização/edição do RAN | OK |
 | pages/NewPatientPage.jsx | Formulário novo paciente | OK |
 | pages/EditPatientPage.jsx | Edição de paciente | OK |
@@ -300,14 +300,14 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [ ] `grep "Calibri" backend/services/docx-generator.js` não retorna nada
 
 ### Sprint 2 — Extração e Qualidade Clínica (pendente)
-- [ ] C1 ✓: pdf-extractor.js suporte a DOCX via mammoth
+- [x] C1 ✓: pdf-extractor.js suporte a DOCX via mammoth
 - [ ] C2 ~: prompt específico por instrumento (detectar pelo nome do arquivo)
-- [ ] C3 ✓: score de legibilidade de imagens ([ILEGÍVEL] > 20% → quality:"baixa")
-- [ ] C4 ✓: drive.js Google Docs via files.export text/plain
+- [x] C3 ✓: score de legibilidade de imagens ([ILEGÍVEL] > 20% → quality:"baixa")
+- [x] C4 ✓: drive.js Google Docs via files.export text/plain
 - [x] D1 ✓: Revisor valida contra instrument_library (13 validações clínicas)
 - [x] D2: descartado por decisão clínica em 26/04/2026 — score mantido em 20
 - [x] D3 ✓: getSystemPrompt() async com Firestore + fallback arquivo
-- [ ] E1 ✓: SSE ou polling por job_id para progresso real
+- [x] E1 ✓: SSE ou polling por job_id para progresso real
 - [x] E4 ✓: api.js + ReportPage download PDF (já implementado — botão PDF no dropdown de download do ReportPage)
 - [x] Carregar nexum_biblioteca_clinica_neuropsi.json no Firestore (seed rodado em 27/04/2026)
 
