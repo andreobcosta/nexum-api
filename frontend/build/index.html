@@ -84,7 +84,7 @@ const API='/api';
 
 /* ── API HELPERS ── */
 async function apiFetch(p,o={}){
-  const r=await fetch(API+p,{headers:{'Content-Type':'application/json',...o.headers},...o});
+  const r=await fetch(API+p,{headers:{'Content-Type':'application/json','Authorization':'Bearer '+localStorage.getItem("nexum_token"),...o.headers},...o});
   if(!r.ok){const e=await r.json().catch(()=>({error:r.statusText}));throw new Error(e.error||e.details||'Erro')}
   return r.json()
 }
