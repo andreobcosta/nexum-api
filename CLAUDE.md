@@ -46,7 +46,7 @@ Sem linter ou framework de testes configurado.
 | Deploy frontend | Vercel (mesmo repositório GitHub) |
 | CI/CD | Cloud Build — push ao main → health check + rollback automático |
 | Memory / Timeout | 512Mi / 900s (corrigido em A3) |
-| Commit estável | 884da9e / Sprint 2 — C1+C3+C4+E1+D1+D3 |
+| Commit estável | 4a3d730 / B5 — Compressor |
 
 **Nunca** editar código diretamente no Cloud Run. Alterações chegam via git push → Cloud Build.
 
@@ -69,14 +69,14 @@ Sem linter ou framework de testes configurado.
 | Agente | Modelo | Input | Output | Custo |
 |--------|--------|-------|--------|-------|
 | Chirp 2 STT | Google Chirp 2 | Áudio GCS | Transcrição com diarização | $0.45 (75min) |
-| Identificador de Locutores | Claude Haiku | Transcrição bruta | Transcrição renomeada | $0.039 (×2 áudios) |
+| Agente Compressor | Claude Haiku | Transcrição bruta | Transcrição renomeada + JSON clínico | $0.019 (×2 áudios) |
 | PDF/Image Extractor | Claude Sonnet vision | PDF ou imagem base64 | Texto extraído | $0.032/arquivo |
 | Agente Analítico | Claude Sonnet | Transcrições + PDFs ~12.200t | Dossiê JSON ~2.000t | $0.067 |
 | Agente Redator | Claude Sonnet | System prompt 7.055t + dossiê 2.000t | RAN Markdown ~8.000t | $0.147 |
 | Agente Revisor | Claude Haiku → **Sonnet** | RAN completo ~8.500t | JSON de validação ~300t | $0.008 → $0.027 |
 | Agente Diff | Claude Haiku | RAN existente + novos docs | JSON de diferenças | variável |
 
-**Custo total por RAN:** com áudio $0.775 → $0.725 (pós-melhorias) | sem áudio $0.286 → $0.247
+**Custo total por RAN:** com áudio $0.775 → $0.705 (pós-B5) | sem áudio $0.286 → $0.247
 
 ---
 
@@ -100,7 +100,7 @@ Sem linter ou framework de testes configurado.
 | services/drive.js | Drive: upload, export, update | OK |
 | services/drive-sync.js | Sync bidirecional webhooks Drive | Inativo sem APP_URL |
 | services/pdf-extractor.js | Extração PDF/imagem/DOCX + score legibilidade | Atualizado C1+C3+C4 |
-| services/transcription.js | STT Chirp 2 + Identificador | Pendente Sprint 3 (B5 Compressor) |
+| services/transcription.js | STT Chirp 2 + Compressor | Atualizado B5 |
 | services/docx-generator.js | Gera DOCX — fonte Arial (corrigido E6) | Atualizado E6 |
 | prompts/system_prompt_ran.md | System prompt RAN — LOCK PERMANENTE | Nunca alterar ética/não-diagnóstico |
 
@@ -314,7 +314,7 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 ### Sprint 3 — Novas Funcionalidades (pendente)
 - [ ] backend/routes/admin.js + frontend AdminPage.jsx
 - [ ] backend/routes/settings.js + frontend SettingsPage.jsx
-- [ ] B5 ~: Compressor (substitui Identificador — spec abaixo)
+- [x] B5 ✓: Compressor (substitui Identificador — spec abaixo)
 - [ ] E2+E3 ~: JSON de blocos + edição inline + captura de feedback por bloco
 - [ ] E5 ~: docx-generator.js carregarLayout() do Firestore
 
@@ -385,6 +385,46 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 - Score 0 imediato: dado fabricado, escore impossível, diagnóstico fechado, escala invertida violada
 - Score mínimo **nunca remover** — mantido em 20 para permitir pré-relatórios com dados parciais. O D2 (score 40) foi descartado por decisão clínica em 26/04/2026.
 - Regras éticas do system prompt: **lock permanente** — nenhuma automação pode alterar
+
+---
+
+## Contexto para Novas Sessões — Anti-Alucinação
+
+### Decisões Arquiteturais (não reverter sem decisão explícita)
+
+| Decisão | Motivo |
+|---------|--------|
+| Frontend é um único arquivo `frontend/build/index.html` (React CDN + Babel standalone) | Vite só existe para dev local — o build de produção é esse arquivo único |
+| JSX em event handlers SEMPRE inline, nunca multilinha | Babel standalone quebra silenciosamente com JSX multilinha em handlers |
+| Score mínimo = 20 (não 40) | D2 descartado por decisão clínica de Patrízia em 26/04/2026 |
+| Revisor usa Claude Sonnet (não Haiku) | B3: Haiku produzia validações clínicas insuficientes |
+| Pipeline de geração async via collection `jobs` no Firestore | E1: evita timeout do Cloud Run (900s) em gerações longas |
+| `transcribeAudio` retorna `{ transcricao, comprimido }` | B5: Compressor substituiu o Identificador — chamadores usam `.transcricao` |
+| Relatórios salvos como Google Docs nativos no Drive | Permite edição direta no Drive sem conversão |
+| Firestore é o banco ativo — SQLite é legado | Migração feita — nunca usar SQLite |
+| `dotenv.config()` sempre com path explícito `/app/backend/.env` | Sem path explícito falha em volumes Docker montados |
+
+### Bugs Corrigidos — Não Reintroduzir
+
+| Bug | Fix |
+|-----|-----|
+| Token OAuth exposto em `/?token=` nos logs do servidor | Corrigido para `/#token=` (hash fragment) — A2 |
+| Fonte Calibri não existe no Cloud Run | Substituída por Arial em todos os geradores — E6 |
+| Revisor retornava `aprovado: true` no bloco `catch` | Corrigido para `aprovado: false` — B3 |
+| Prompt caching desativado no Redator | Reativado com `cache_control: ephemeral` — B4 |
+| Geração de RAN bloqueava a resposta HTTP até concluir | Refatorado para async com `setImmediate` + job_id — E1 |
+
+### O que NÃO Existe (não inventar)
+
+- **Sem `routes/admin.js` / AdminPage** — Sprint 3, não implementado
+- **Sem `routes/settings.js` / SettingsPage** — Sprint 3, não implementado
+- **Sem edição inline de blocos (E2+E3)** — Sprint 3, não implementado
+- **Sem Motor de Feedback / Vector Search** — Sprint 4, não implementado
+- **Sem collections** `motor_config`, `feedback_queue`, `feedbacks`, `system_prompts`, `system_prompts_history`, `report_layout` — a criar nas próximas sprints
+- **Sem SSE** — progresso de geração usa polling HTTP via collection `jobs`
+- **Sem testes automatizados** — validação por uso clínico real (Princípio do Feedback)
+- **Sem ambiente de staging** — apenas produção (Cloud Run) e local (`docker-compose`)
+- **C2 pendente** — prompt específico por instrumento ainda não implementado (Sprint 2 restante)
 
 ---
 
