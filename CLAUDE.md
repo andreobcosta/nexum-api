@@ -46,7 +46,7 @@ Sem linter ou framework de testes configurado.
 | Deploy frontend | Vercel (mesmo repositório GitHub) |
 | CI/CD | Cloud Build — push ao main → health check + rollback automático |
 | Memory / Timeout | 512Mi / 900s (corrigido em A3) |
-| Commit estável | fcd0df8 / revisão Cloud Run 00065-9t7 |
+| Commit estável | dea5b97 / Sprint 1 completa em produção |
 
 **Nunca** editar código diretamente no Cloud Run. Alterações chegam via git push → Cloud Build.
 
