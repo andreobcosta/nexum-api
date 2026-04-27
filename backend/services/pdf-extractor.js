@@ -1,6 +1,7 @@
 // Serviço de extração de texto de PDFs via Claude vision
 // Usado pelo pipeline de geração de RAN para tornar PDFs legíveis ao Analítico
 
+const mammoth = require('mammoth');
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL_SONNET = 'claude-sonnet-4-20250514';
 
@@ -130,8 +131,11 @@ NÃO interprete os dados — apenas extraia e organize. A interpretação é fei
       const usage = data.usage || {};
       const cost = ((usage.input_tokens || 0) * 3.00 + (usage.output_tokens || 0) * 15.00) / 1_000_000;
 
-      console.log(`[PDF-Extractor] ${fileName} — ${text.length} chars extraídos — $${cost.toFixed(4)}`);
-      return { text, cost };
+      const ilegCount = (text.match(/\[ILEGÍVEL\]/g) || []).length;
+      const quality = text.length > 0 && (ilegCount * 10) / text.length > 0.2 ? 'baixa' : 'ok';
+
+      console.log(`[PDF-Extractor] ${fileName} — ${text.length} chars extraídos — qualidade:${quality} — $${cost.toFixed(4)}`);
+      return { text, cost, quality };
 
     } catch (err) {
       console.error(`[PDF-Extractor] Erro ao extrair ${fileName} (tentativa ${attempt}):`, err.message);
@@ -189,7 +193,28 @@ async function processDataPackage(rawDataPackage) {
           continue;
         }
 
-        // Caso 3: PDF ou imagem — extrai via Claude vision
+        // Caso 3: DOCX — extrai via mammoth (sem custo de API)
+        if (file.content && file.name?.toLowerCase().endsWith('.docx')) {
+          const buffer = Buffer.from(file.content, 'base64');
+          const result = await mammoth.extractRawText({ buffer });
+          const text = result.value?.trim();
+          if (text) {
+            processed[folderName].push({
+              name: file.name,
+              type: 'docx_extraido',
+              content: text,
+              source: 'mammoth'
+            });
+            log.push(`✓ ${file.name} — DOCX extraído via mammoth (${text.length} chars)`);
+            filesProcessed++;
+          } else {
+            log.push(`⚠ ${file.name} — DOCX sem conteúdo útil`);
+            filesSkipped++;
+          }
+          continue;
+        }
+
+        // Caso 4: PDF ou imagem — extrai via Claude vision
         if (file.content && needsVisionExtraction(file.type)) {
           console.log(`[PDF-Extractor] Extraindo: ${file.name} (${file.type})`);
           // Delay entre extrações para respeitar rate limit da API
@@ -197,14 +222,17 @@ async function processDataPackage(rawDataPackage) {
           const result = await extractTextFromFile(file.content, file.type, file.name);
 
           if (result && result.text && result.text.trim()) {
-            processed[folderName].push({
+            const entry = {
               name: file.name,
               type: 'pdf_extraido',
               content: result.text,
               source: 'vision_extraction'
-            });
+            };
+            if (result.quality === 'baixa') entry.quality = 'baixa';
+            processed[folderName].push(entry);
             totalCost += result.cost;
-            log.push(`✓ ${file.name} — PDF/imagem extraído (${result.text.length} chars, $${result.cost.toFixed(4)})`);
+            const qualityTag = result.quality === 'baixa' ? ' ⚠ qualidade:baixa' : '';
+            log.push(`✓ ${file.name} — PDF/imagem extraído (${result.text.length} chars, $${result.cost.toFixed(4)})${qualityTag}`);
             filesProcessed++;
           } else {
             log.push(`⚠ ${file.name} — extração sem conteúdo útil`);
@@ -213,7 +241,7 @@ async function processDataPackage(rawDataPackage) {
           continue;
         }
 
-        // Caso 4: Arquivo binário não suportado (webm sem transcrição, etc.)
+        // Caso 5: Arquivo binário não suportado (webm sem transcrição, etc.)
         log.push(`✗ ${file.name} — formato não processável (${file.type || 'desconhecido'})`);
         filesSkipped++;
 

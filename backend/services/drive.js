@@ -161,6 +161,16 @@ async function exportAsPdf(fileId) {
   return Buffer.from(res.data);
 }
 
+// Exporta Google Doc nativo como texto simples (text/plain)
+async function exportGoogleDocAsText(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.export(
+    { fileId, mimeType: 'text/plain' },
+    { responseType: 'text' }
+  );
+  return res.data;
+}
+
 // Verifica se um arquivo do Drive é Google Doc nativo
 async function isGoogleDoc(fileId) {
   const drive = getDrive();
@@ -268,6 +278,7 @@ module.exports = {
   updateGoogleDoc,
   exportAsDocx,
   exportAsPdf,
+  exportGoogleDocAsText,
   isGoogleDoc,
   listFiles,
   listSubfolders,
