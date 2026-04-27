@@ -1,16 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
-const path = require('path');
 const { getDb } = require('../db/firestore');
 const drive = require('../services/drive');
 const claude = require('../services/claude');
-
-const SYSTEM_PROMPT_PATH = path.join(__dirname, '..', 'prompts', 'system_prompt_ran.md');
-function getSystemPrompt() {
-  return fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8');
-}
 
 // POST /api/reports/generate/:patient_id
 router.post('/generate/:patient_id', async (req, res) => {
@@ -130,7 +123,7 @@ router.post('/generate/:patient_id', async (req, res) => {
 
     let ranResult;
     try {
-      const systemPrompt = getSystemPrompt();
+      const systemPrompt = await claude.getSystemPrompt();
       ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage);
     } finally {
       await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null });
@@ -311,7 +304,7 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     }
 
     const novosDocumentos = novosSections.join('\n');
-    const systemPrompt = getSystemPrompt();
+    const systemPrompt = await claude.getSystemPrompt();
     const ranResult = await claude.updateRAN(systemPrompt, patient, ranExistente, novosDocumentos);
 
     const reportContent = ranResult.relatorio;

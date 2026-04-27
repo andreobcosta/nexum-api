@@ -21,6 +21,35 @@ async function getInstrumentLibrary(db) {
   return library;
 }
 
+let _promptCache = null;
+let _promptCacheTime = 0;
+const PROMPT_CACHE_TTL = 30 * 60 * 1000;
+
+async function getSystemPrompt() {
+  if (_promptCache && (Date.now() - _promptCacheTime) < PROMPT_CACHE_TTL) {
+    return _promptCache;
+  }
+  try {
+    const db = getDb();
+    const doc = await db.collection('system_prompts').doc('neuropsicopedagogia').get();
+    if (doc.exists && doc.data().aprovado === true && doc.data().conteudo) {
+      _promptCache = doc.data().conteudo;
+      _promptCacheTime = Date.now();
+      console.log('[SystemPrompt] fonte: firestore');
+      return _promptCache;
+    }
+  } catch (e) {
+    console.warn('[SystemPrompt] Firestore indisponível, usando fallback:', e.message);
+  }
+  const fs = require('fs');
+  const path = require('path');
+  const filePath = path.join(__dirname, '..', 'prompts', 'system_prompt_ran.md');
+  _promptCache = fs.readFileSync(filePath, 'utf-8');
+  _promptCacheTime = Date.now();
+  console.log('[SystemPrompt] fonte: arquivo');
+  return _promptCache;
+}
+
 const PRICING = {
   [MODEL_SONNET]: { input: 3.00, output: 15.00 },
   [MODEL_HAIKU]:  { input: 0.80, output: 4.00 }
@@ -539,5 +568,6 @@ async function updateRAN(systemPromptRAN, patientInfo, ranExistente, rawNovosDoc
 module.exports = {
   callClaude: async (sp, um, mt, m) => (await callClaude(sp, um, mt, m)).text,
   generateRAN,
-  updateRAN
+  updateRAN,
+  getSystemPrompt
 };
