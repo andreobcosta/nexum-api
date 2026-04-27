@@ -43,6 +43,9 @@ steps:
 
   # ── STEP 4: Libera tráfego + health check + rollback automático em um único passo
   # Ordem: libera tráfego → verifica saúde → rollback se falhar
+  # Secrets com permissão concedida manualmente:
+  # nexum-jwt-secret, nexum-allowed-email,
+  # nexum-login-client-id, nexum-login-client-secret
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'release-verify-rollback'
     entrypoint: bash
@@ -59,7 +62,7 @@ steps:
         echo "✓ Tráfego liberado"
 
         # 2. Aguarda propagação (Cloud Run pode demorar alguns segundos)
-        sleep 8
+        sleep 30
 
         # 3. Health check (5 tentativas × 10s = até 50s)
         # Aceita 200 (OK) ou 503 (degradado mas container rodando)
