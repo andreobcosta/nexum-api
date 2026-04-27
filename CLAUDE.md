@@ -178,7 +178,7 @@ Pacientes/
 3. Transcrições salvas no Firestore e como `.txt` no Drive
 4. Na geração, `routes/reports.js` verifica lock (`pipeline_ativo`), monta `dataPackage`
 5. `services/claude.js` executa pipeline: Analítico → Redator (com prompt caching) → Revisor (Sonnet)
-6. Revisor valida com dossiê + RAN completo. Score mínimo: **20** (→ **40** após Sprint 2)
+6. Revisor valida com dossiê + RAN completo. Score mínimo: **20** (mantido em 20 para permitir pré-relatórios com dados parciais)
 7. Relatório salvo no Firestore e no Drive como Google Doc nativo
 
 ---
@@ -309,7 +309,7 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] D3 ✓: getSystemPrompt() async com Firestore + fallback arquivo
 - [ ] E1 ✓: SSE ou polling por job_id para progresso real
 - [ ] E4 ✓: api.js + ReportPage download PDF
-- [ ] Carregar nexum_biblioteca_clinica_neuropsi.json no Firestore
+- [x] Carregar nexum_biblioteca_clinica_neuropsi.json no Firestore (seed rodado em 27/04/2026)
 
 ### Sprint 3 — Novas Funcionalidades (pendente)
 - [ ] backend/routes/admin.js + frontend AdminPage.jsx
