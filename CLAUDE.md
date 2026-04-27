@@ -308,7 +308,7 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] D2: descartado por decisão clínica em 26/04/2026 — score mantido em 20
 - [x] D3 ✓: getSystemPrompt() async com Firestore + fallback arquivo
 - [ ] E1 ✓: SSE ou polling por job_id para progresso real
-- [ ] E4 ✓: api.js + ReportPage download PDF
+- [x] E4 ✓: api.js + ReportPage download PDF (já implementado — botão PDF no dropdown de download do ReportPage)
 - [x] Carregar nexum_biblioteca_clinica_neuropsi.json no Firestore (seed rodado em 27/04/2026)
 
 ### Sprint 3 — Novas Funcionalidades (pendente)
