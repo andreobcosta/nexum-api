@@ -35,7 +35,7 @@ steps:
       - '--allow-unauthenticated'
       - '--memory=512Mi'
       - '--timeout=900'
-      - '--set-env-vars=GCP_PROJECT_ID=nexum-production,FIRESTORE_DATABASE_ID=nexum-db,NODE_ENV=production,DEPLOY_SHA=$COMMIT_SHA,APP_URL=https://nexum-api-xvxoj574uq-uc.a.run.app,GOOGLE_REDIRECT_URI=https://app.patriziasantarem.com/api/auth/google/callback'
+      - '--set-env-vars=GCP_PROJECT_ID=nexum-production,FIRESTORE_DATABASE_ID=nexum-db,NODE_ENV=production,DEPLOY_SHA=$COMMIT_SHA,APP_URL=https://app.patriziasantarem.com,GOOGLE_REDIRECT_URI=https://app.patriziasantarem.com/api/auth/google/callback'
       - '--set-secrets=ANTHROPIC_API_KEY=nexum-anthropic-key:latest,GOOGLE_CLIENT_ID=nexum-google-client-id:latest,GOOGLE_CLIENT_SECRET=nexum-google-client-secret:latest,GOOGLE_REFRESH_TOKEN=nexum-google-refresh-token:latest,GOOGLE_DRIVE_ROOT_FOLDER_ID=nexum-google-drive-folder-id:latest,/app/secrets/nexum-service-account.json=nexum-service-account:latest,JWT_SECRET=nexum-jwt-secret:latest,ALLOWED_EMAIL=nexum-allowed-email:latest,GOOGLE_LOGIN_CLIENT_ID=nexum-login-client-id:latest,GOOGLE_LOGIN_CLIENT_SECRET=nexum-login-client-secret:latest'
       - '--service-account=nexum-api@nexum-production.iam.gserviceaccount.com'
       - '--no-traffic'
