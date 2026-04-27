@@ -529,20 +529,15 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit}){
   useEffect(()=>{load()},[load]);
 
   const runPipeline=async(endpoint,successMsg)=>{
-    setGenerating(true);setPipelineStage('analitico');setPipelineMsg('Iniciando análise dos documentos...');
-    const stages=[
-      {stage:'analitico',msg:'Agente Analítico lendo e cruzando dados...',delay:0},
-      {stage:'redator',msg:'Agente Redator integrando dados...',delay:8000},
-      {stage:'revisor',msg:'Agente Revisor validando qualidade...',delay:16000},
-    ];
-    stages.forEach(({stage,msg,delay})=>setTimeout(()=>{setPipelineStage(stage);setPipelineMsg(msg)},delay));
+    setGenerating(true);setPipelineStage('analitico');setPipelineMsg('Iniciando...');
+    const SMAP={'Agente Analítico — extraindo dados clínicos':'analitico','Agente Redator — redigindo relatório':'redator','Agente Revisor — validando qualidade':'revisor'};
     try{
       const r=await apiFetch(endpoint,{method:'POST',body:JSON.stringify({force:true})});
-      setPipelineStage('done');
-      setToast({message:successMsg(r),type:'success'});
-      setTimeout(()=>load(),1000);
-    }catch(e){setToast({message:e.message,type:'error'})}
-    finally{setGenerating(false);setPipelineStage(null)}
+      if(!r.job_id){setPipelineStage('done');setToast({message:successMsg(r),type:'success'});setTimeout(()=>load(),1000);return;}
+      const job=await new Promise((resolve,reject)=>{let n=0;const t=setInterval(async()=>{if(++n>200){clearInterval(t);reject(new Error('Timeout: geração excedeu 10 minutos'));return;}try{const j=await apiFetch('/reports/job/'+r.job_id);const s=SMAP[j.etapa];if(s){setPipelineStage(s);setPipelineMsg(j.etapa);}if(j.status==='concluido'){clearInterval(t);resolve(j);return;}if(j.status==='erro'){clearInterval(t);reject(new Error(j.erro||'Erro na geração'));return;}}catch(pe){console.warn('[poll]',pe.message);}},3000);});
+      setPipelineStage('done');setToast({message:'RAN gerado! Score: '+(job.score_qualidade||'—')+'/100',type:'success'});setTimeout(()=>load(),1000);
+    }catch(e){setToast({message:e.message,type:'error'});}
+    finally{setGenerating(false);setPipelineStage(null);}
   };
 
   const generateRAN=()=>runPipeline(

@@ -32,181 +32,130 @@ router.post('/generate/:patient_id', async (req, res) => {
     if (!fileCounts.teste) missing.push('Testes');
     if (!fileCounts.sessao) missing.push('Sessões');
     if (missing.length > 0 && !req.body.force) {
+      await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null });
       return res.status(400).json({
         error: 'Dados incompletos', missing,
         message: `Faltam: ${missing.join(', ')}. Envie force=true para gerar mesmo assim.`
       });
     }
 
-    // Monta dataPackage com dados corretos do Firestore
-    // Transcrições de áudio são passadas como texto — PDFs como base64 para extração via vision
-    const dataPackage = {};
-    const filesLog = [];
+    // Cria job e responde imediatamente — pipeline roda em background
+    const jobId = uuidv4();
+    const jobRef = db.collection('jobs').doc(jobId);
+    await jobRef.set({ status: 'processando', etapa: 'iniciando', agente: null, patient_id: req.params.patient_id, created_at: new Date().toISOString() });
+    res.status(202).json({ job_id: jobId, status: 'processando' });
 
-    // ETAPA 1: Adiciona arquivos do Firestore ao dataPackage
-    // Transcrições de áudio → texto direto
-    // Outros arquivos (PDFs, imagens) → placeholder para busca no Drive
-    const firestoreFileNames = new Set(); // controla arquivos já adicionados
+    setImmediate(async () => {
+      try {
+        // Coleta dados do Firestore e Drive
+        const dataPackage = {};
+        const filesLog = [];
+        const firestoreFileNames = new Set();
 
-    for (const f of filesSnap.docs) {
-      const file = f.data();
-      const folderName = drive.CATEGORY_TO_FOLDER[file.category] || file.category;
-      if (!dataPackage[folderName]) dataPackage[folderName] = [];
-
-      if (file.transcription) {
-        // Áudio com transcrição — passa texto diretamente
-        dataPackage[folderName].push({
-          name: file.original_name,
-          type: 'text/plain',
-          transcription: file.transcription,
-          content: null,
-          source: 'firestore_transcription'
-        });
-        filesLog.push(file.original_name + ' (transcrição áudio)');
-        firestoreFileNames.add(file.original_name);
-      } else if (file.drive_file_id) {
-        // Arquivo sem transcrição — adiciona placeholder para ser preenchido pelo Drive
-        dataPackage[folderName].push({
-          name: file.original_name,
-          type: file.file_type || 'application/octet-stream',
-          transcription: null,
-          content: null, // será preenchido abaixo
-          drive_file_id: file.drive_file_id,
-          source: 'firestore_pending'
-        });
-        filesLog.push(file.original_name + ' (aguardando Drive)');
-        firestoreFileNames.add(file.original_name);
-      }
-    }
-
-    // ETAPA 2: Busca conteúdo do Drive para todos os arquivos
-    // — preenche placeholders pendentes e adiciona arquivos novos do Drive
-    try {
-      const driveData = await drive.collectPatientData(patient.drive_folder_id);
-      for (const folder in driveData) {
-        if (!dataPackage[folder]) dataPackage[folder] = [];
-        for (const df of driveData[folder]) {
-          // Verifica se já existe no dataPackage como placeholder pendente
-          const pendingIdx = dataPackage[folder].findIndex(
-            f => f.name === df.name && f.source === 'firestore_pending'
-          );
-
-          if (pendingIdx >= 0) {
-            // Preenche o placeholder com o conteúdo real do Drive
-            dataPackage[folder][pendingIdx].content = df.content;
-            dataPackage[folder][pendingIdx].type = df.type || dataPackage[folder][pendingIdx].type;
-            dataPackage[folder][pendingIdx].source = 'drive_filled';
-            filesLog.push(df.name + ' (conteúdo Drive carregado)');
-          } else if (!firestoreFileNames.has(df.name)) {
-            // Arquivo existe no Drive mas não no Firestore — adiciona diretamente
-            dataPackage[folder].push({
-              name: df.name,
-              type: df.type,
-              content: df.content,
-              size: df.size,
-              source: 'drive_only'
-            });
-            filesLog.push(df.name + ' (Drive — não registrado no Firestore)');
+        for (const f of filesSnap.docs) {
+          const file = f.data();
+          const folderName = drive.CATEGORY_TO_FOLDER[file.category] || file.category;
+          if (!dataPackage[folderName]) dataPackage[folderName] = [];
+          if (file.transcription) {
+            dataPackage[folderName].push({ name: file.original_name, type: 'text/plain', transcription: file.transcription, content: null, source: 'firestore_transcription' });
+            filesLog.push(file.original_name + ' (transcrição áudio)');
+            firestoreFileNames.add(file.original_name);
+          } else if (file.drive_file_id) {
+            dataPackage[folderName].push({ name: file.original_name, type: file.file_type || 'application/octet-stream', transcription: null, content: null, drive_file_id: file.drive_file_id, source: 'firestore_pending' });
+            filesLog.push(file.original_name + ' (aguardando Drive)');
+            firestoreFileNames.add(file.original_name);
           }
         }
+
+        try {
+          const driveData = await drive.collectPatientData(patient.drive_folder_id);
+          for (const folder in driveData) {
+            if (!dataPackage[folder]) dataPackage[folder] = [];
+            for (const df of driveData[folder]) {
+              const pendingIdx = dataPackage[folder].findIndex(f => f.name === df.name && f.source === 'firestore_pending');
+              if (pendingIdx >= 0) {
+                dataPackage[folder][pendingIdx].content = df.content;
+                dataPackage[folder][pendingIdx].type = df.type || dataPackage[folder][pendingIdx].type;
+                dataPackage[folder][pendingIdx].source = 'drive_filled';
+                filesLog.push(df.name + ' (conteúdo Drive carregado)');
+              } else if (!firestoreFileNames.has(df.name)) {
+                dataPackage[folder].push({ name: df.name, type: df.type, content: df.content, size: df.size, source: 'drive_only' });
+                filesLog.push(df.name + ' (Drive — não registrado no Firestore)');
+              }
+            }
+          }
+        } catch (driveErr) {
+          console.warn('[Reports] Erro ao coletar Drive:', driveErr.message);
+        }
+
+        const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
+        const comConteudo = Object.values(dataPackage).reduce((sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0);
+        console.log(`[Reports] Arquivos coletados (${totalFiles} total, ${comConteudo} com conteúdo):`, filesLog.join(' | '));
+
+        // onProgress atualiza etapa do job no Firestore a cada agente
+        const ETAPA_MAP = { analitico: 'Agente Analítico — extraindo dados clínicos', redator: 'Agente Redator — redigindo relatório', revisor: 'Agente Revisor — validando qualidade' };
+        const onProgress = async (agent) => {
+          if (ETAPA_MAP[agent]) await jobRef.update({ etapa: ETAPA_MAP[agent], agente: agent }).catch(() => {});
+        };
+
+        const systemPrompt = await claude.getSystemPrompt();
+        const ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage, onProgress);
+        await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null });
+
+        const reportContent = ranResult.relatorio;
+        const ranMeta = { dossie: ranResult.dossie, revisao: ranResult.revisao, custos: ranResult.custos, extraction_meta: ranResult.extraction_meta, elapsed_seconds: ranResult.elapsed_seconds };
+
+        const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
+        const version = reportsSnap.size + 1;
+        const reportId = uuidv4();
+        const now = new Date().toISOString();
+
+        const nomeBase = patient.full_name.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+        const reportFileName = `RAN_${nomeBase}_v${version}`;
+        let driveFileId = null;
+        let driveIsGoogleDoc = false;
+
+        try {
+          const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
+          const driveFile = await drive.uploadAsGoogleDoc(reportContent, reportFileName, subfolderId, 'text/markdown');
+          driveFileId = driveFile.id;
+          driveIsGoogleDoc = true;
+          console.log('[Reports] Google Doc criado no Drive:', driveFile.name, '—', driveFile.webViewLink);
+        } catch (uploadErr) {
+          console.warn('[Reports] Erro ao criar Google Doc — tentando .md:', uploadErr.message);
+          try {
+            const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
+            const reportBuffer = Buffer.from(reportContent, 'utf-8');
+            const driveFile = await drive.uploadBuffer(reportBuffer, reportFileName + '.md', 'text/markdown', subfolderId);
+            driveFileId = driveFile.id;
+          } catch (fallbackErr) {
+            console.warn('[Reports] Fallback .md também falhou:', fallbackErr.message);
+          }
+        }
+
+        await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(reportId).set({
+          patient_id: req.params.patient_id, version,
+          drive_file_id: driveFileId, drive_is_google_doc: driveIsGoogleDoc,
+          content_md: reportContent, ran_meta: JSON.stringify(ranMeta),
+          status: 'draft', generated_at: now, reviewed_at: null
+        });
+        const { FieldValue } = require('@google-cloud/firestore');
+        await db.collection('patients').doc(req.params.patient_id).update({ status: 'relatorio_gerado', updated_at: now, reports_count: FieldValue.increment(1) });
+        await db.collection('activity_log').add({ patient_id: req.params.patient_id, action: 'report_generated', details: JSON.stringify({ version, report_id: reportId }), created_at: now });
+
+        await jobRef.update({ status: 'concluido', etapa: 'Relatório gerado', agente: 'concluido', report_id: reportId, score_qualidade: ranResult.revisao?.score_qualidade, completed_at: now });
+
+      } catch (bgErr) {
+        console.error('[Pipeline] Erro em background:', bgErr);
+        await jobRef.update({ status: 'erro', erro: bgErr.message }).catch(() => {});
+        await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null }).catch(() => {});
       }
-    } catch (driveErr) {
-      console.warn('[Reports] Erro ao coletar Drive:', driveErr.message);
-    }
-
-    // ETAPA 3: Log detalhado do que vai para o pipeline
-    const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
-    const comConteudo = Object.values(dataPackage).reduce(
-      (sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0
-    );
-    console.log(`[Reports] Arquivos coletados (${totalFiles} total, ${comConteudo} com conteúdo):`, filesLog.join(' | '));
-
-    let ranResult;
-    try {
-      const systemPrompt = await claude.getSystemPrompt();
-      ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage);
-    } finally {
-      await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null });
-    }
-    const reportContent = ranResult.relatorio;
-    const ranMeta = {
-      dossie: ranResult.dossie,
-      revisao: ranResult.revisao,
-      custos: ranResult.custos,
-      extraction_meta: ranResult.extraction_meta,
-      elapsed_seconds: ranResult.elapsed_seconds
-    };
-
-    // Bloqueia salvamento se score de qualidade for muito baixo
-    const scoreMinimo = 20;
-    if (ranResult.revisao?.score_qualidade < scoreMinimo && !req.body.force_save) {
-      return res.status(422).json({
-        error: 'Qualidade insuficiente',
-        score: ranResult.revisao.score_qualidade,
-        minimo: scoreMinimo,
-        problemas: ranResult.revisao.problemas_criticos,
-        secoes_ausentes: ranResult.revisao.secoes_ausentes,
-        message: 'Score ' + ranResult.revisao.score_qualidade + '/100 abaixo do mínimo (' + scoreMinimo + '). Envie force_save=true para salvar mesmo assim.',
-        relatorio_preview: reportContent.substring(0, 500)
-      });
-    }
-
-    const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
-    const version = reportsSnap.size + 1;
-    const reportId = uuidv4();
-    const now = new Date().toISOString();
-
-    const nomeBase = patient.full_name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
-    const reportFileName = `RAN_${nomeBase}_v${version}`;
-    let driveFileId = null;
-    let driveIsGoogleDoc = false;
-
-    try {
-      const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
-      // Salva como Google Doc nativo — editável no Docs e exportável como .docx
-      const driveFile = await drive.uploadAsGoogleDoc(reportContent, reportFileName, subfolderId, 'text/markdown');
-      driveFileId = driveFile.id;
-      driveIsGoogleDoc = true;
-      console.log('[Reports] Google Doc criado no Drive:', driveFile.name, '—', driveFile.webViewLink);
-    } catch (uploadErr) {
-      console.warn('[Reports] Erro ao criar Google Doc — tentando .md:', uploadErr.message);
-      try {
-        const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
-        const reportBuffer = Buffer.from(reportContent, 'utf-8');
-        const driveFile = await drive.uploadBuffer(reportBuffer, reportFileName + '.md', 'text/markdown', subfolderId);
-        driveFileId = driveFile.id;
-      } catch (fallbackErr) {
-        console.warn('[Reports] Fallback .md também falhou:', fallbackErr.message);
-      }
-    }
-
-    await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(reportId).set({
-      patient_id: req.params.patient_id, version,
-      drive_file_id: driveFileId,
-      drive_is_google_doc: driveIsGoogleDoc,
-      content_md: reportContent,
-      ran_meta: JSON.stringify(ranMeta),
-      status: 'draft', generated_at: now, reviewed_at: null
-    });
-    const { FieldValue } = require('@google-cloud/firestore');
-    await db.collection('patients').doc(req.params.patient_id).update({
-      status: 'relatorio_gerado', updated_at: now,
-      reports_count: FieldValue.increment(1)
-    });
-    await db.collection('activity_log').add({
-      patient_id: req.params.patient_id, action: 'report_generated',
-      details: JSON.stringify({ version, report_id: reportId }), created_at: now
     });
 
-    res.status(201).json({
-      id: reportId, version, patient: patient.full_name,
-      drive_file_id: driveFileId, drive_file_name: reportFileName,
-      content_preview: reportContent.substring(0, 500) + '...', score_qualidade: ranMeta.revisao?.score_qualidade, elapsed_seconds: ranMeta.elapsed_seconds, custo_usd: ranMeta.custos?.total_usd,
-      message: `Relatório v${version} gerado com sucesso`
-    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Erro ao gerar relatório', details: err.message });
+    try { await db.collection('patients').doc(req.params.patient_id).update({ pipeline_ativo: false, pipeline_iniciado_em: null }); } catch {}
+    res.status(500).json({ error: 'Erro ao iniciar geração', details: err.message });
   }
 });
 
@@ -220,6 +169,19 @@ router.get('/patient/:patient_id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro ao listar relatórios', details: err.message });
+  }
+});
+
+// GET /api/reports/job/:job_id — consulta status do job de geração
+router.get('/job/:job_id', async (req, res) => {
+  try {
+    const db = getDb();
+    const doc = await db.collection('jobs').doc(req.params.job_id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Job não encontrado' });
+    res.json({ id: doc.id, ...doc.data() });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao buscar job', details: err.message });
   }
 });
 
@@ -364,11 +326,11 @@ router.get('/:report_id', async (req, res) => {
     const db = getDb();
     // Busca em todos os pacientes (query de coleção)
     const snap = await db.collectionGroup('reports').where('__name__', '==', db.collectionGroup('reports').doc(req.params.report_id)).get().catch(() => null);
-    
-    // Fallback: busca direta se o ID for composto patient_id/report_id  
+
+    // Fallback: busca direta se o ID for composto patient_id/report_id
     // ou tenta buscar via activity_log
     // Solução pragmática: retorna erro orientativo
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: 'Use GET /api/reports/:patient_id/:report_id',
       hint: 'Esta rota requer patient_id. Consulte GET /api/reports/patient/:patient_id para listar relatórios do paciente.'
     });
@@ -388,7 +350,7 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
     const report = doc.data();
     const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
     const patient = patientDoc.data();
-    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
     const fileName = 'RAN_' + nomeBase + '_v' + report.version + '.docx';
     let buffer;
     if (report.drive_file_id) {
@@ -428,7 +390,7 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
     const report = doc.data();
     const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
     const patient = patientDoc.data();
-    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
     const fileName = 'RAN_' + nomeBase + '_v' + report.version + '.pdf';
 
     let buffer;
@@ -498,7 +460,7 @@ router.patch('/:patient_id/:report_id', async (req, res) => {
           await drive.updateGoogleDoc(reportData.drive_file_id, conteudo, content_html ? 'text/html' : 'text/markdown');
           console.log('[PATCH] Google Doc atualizado no Drive');
         } else {
-          const nomeBase = (patient && patient.full_name ? patient.full_name : 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+          const nomeBase = (patient && patient.full_name ? patient.full_name : 'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
           const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
           const driveFile = await drive.uploadAsGoogleDoc(conteudo, 'RAN_' + nomeBase + '_v' + reportData.version, subfolderId, content_html ? 'text/html' : 'text/markdown');
           await ref.update({ drive_file_id: driveFile.id, drive_is_google_doc: true });
@@ -537,7 +499,7 @@ router.post('/:patient_id/:report_id/convert', async (req, res) => {
       return res.json({ message: 'Relatório já é Google Doc', drive_file_id: report.drive_file_id });
     }
 
-    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+    const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
     const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
     const driveFile = await drive.uploadAsGoogleDoc(
       report.content_md || '',
