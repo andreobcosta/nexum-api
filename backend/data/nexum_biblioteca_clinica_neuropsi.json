@@ -1,0 +1,98 @@
+{
+  "ETDAH": {
+    "nome_completo": "Escala de Transtorno do Déficit de Atenção/Hiperatividade",
+    "escala_invertida": true,
+    "nota_escala": "Na ETDAH, escores mais altos indicam MAIOR comprometimento. Superior = mais problemático, não melhor desempenho.",
+    "fatores": ["RE", "HI", "CA", "A"],
+    "fatores_descricao": {
+      "RE": "Regulação Emocional",
+      "HI": "Hiperatividade/Impulsividade",
+      "CA": "Comportamento Adaptativo",
+      "A": "Atenção"
+    },
+    "faixas_percentil": [
+      { "min": 0,  "max": 24, "classificacao": "Inferior",      "interpretacao": "Poucos indicadores comportamentais de TDAH" },
+      { "min": 25, "max": 74, "classificacao": "Médio",         "interpretacao": "Indicadores na faixa normativa" },
+      { "min": 75, "max": 94, "classificacao": "Superior",      "interpretacao": "Indicadores elevados — atenção clínica recomendada" },
+      { "min": 95, "max": 99, "classificacao": "Muito Superior","interpretacao": "Indicadores altamente significativos — compatível com TDAH" }
+    ],
+    "validacoes": [
+      { "id": "ETDAH_01", "regra": "percentil_fora_range", "descricao": "Percentil fora de 1–99", "acao": "score_zero", "mensagem": "Percentil ETDAH inválido — deve estar entre 1 e 99" },
+      { "id": "ETDAH_02", "regra": "fator_invalido", "descricao": "Fator diferente de RE/HI/CA/A", "acao": "score_zero", "mensagem": "Fator ETDAH inválido — dado possivelmente fabricado" },
+      { "id": "ETDAH_03", "regra": "escala_invertida_violada", "descricao": "Superior interpretado como bom desempenho", "acao": "score_zero", "mensagem": "Violação da escala invertida ETDAH — Superior indica maior comprometimento" }
+    ]
+  },
+  "CARS": {
+    "nome_completo": "Childhood Autism Rating Scale",
+    "escala_invertida": false,
+    "faixas_pontuacao": [
+      { "min": 15,   "max": 29.5, "classificacao": "Sem autismo",            "interpretacao": "Resultado não indica TEA" },
+      { "min": 30,   "max": 36.5, "classificacao": "Autismo leve a moderado","interpretacao": "Resultado sugere TEA leve a moderado" },
+      { "min": 37,   "max": 60,   "classificacao": "Autismo grave",          "interpretacao": "Resultado sugere TEA grave" }
+    ],
+    "zona_cautela": { "min": 27, "max": 30, "nota": "Pontuações entre 27 e 30 exigem cautela interpretativa. TDAH pode inflar a pontuação." },
+    "validacoes": [
+      { "id": "CARS_01", "regra": "total_fora_range",     "descricao": "Total fora de 15–60",              "acao": "score_zero", "mensagem": "Pontuação CARS inválida — deve estar entre 15 e 60" },
+      { "id": "CARS_02", "regra": "item_fora_range",      "descricao": "Pontuação por item fora de 1–4",   "acao": "score_zero", "mensagem": "Pontuação de item CARS inválida — deve estar entre 1 e 4" },
+      { "id": "CARS_03", "regra": "diagnostico_fechado",  "descricao": "Diagnóstico fechado de TEA emitido","acao": "score_zero", "mensagem": "Violação ética — nunca emitir diagnóstico fechado de TEA" },
+      { "id": "CARS_04", "regra": "cars_menor_30_sem_secao_tea", "descricao": "CARS < 30 sem seção explicativa de não-TEA", "acao": "penalizar", "mensagem": "CARS < 30 requer seção 'Por que os achados não indicam TEA'" },
+      { "id": "CARS_05", "regra": "cars_27_30_com_tdah_sem_mimetizacao", "descricao": "CARS 27–30 com ETDAH HI ≥ 95 sem parágrafo de mimetização", "acao": "penalizar", "mensagem": "Zona de cautela CARS + TDAH grave requer discussão de mimetização" }
+    ]
+  },
+  "TDE2": {
+    "nome_completo": "Teste de Desempenho Escolar — 2ª Edição",
+    "subtestes": ["Leitura", "Escrita", "Aritmetica"],
+    "classificacoes": [
+      { "classificacao": "Acima do esperado",         "interpretacao": "Desempenho superior à média para a escolaridade" },
+      { "classificacao": "Dentro do esperado",        "interpretacao": "Desempenho adequado para a escolaridade" },
+      { "classificacao": "Abaixo do esperado",        "interpretacao": "Desempenho inferior — necessidade de investigação e intervenção" },
+      { "classificacao": "Significativamente abaixo", "interpretacao": "Desempenho muito inferior — possível indicador de dificuldade de aprendizagem" }
+    ],
+    "tipos_erro_escrita": ["CFG", "RC", "IL", "ENP"],
+    "estrategias_aritmetica": ["D", "M", "RV", "A"],
+    "validacoes": [
+      { "id": "TDE2_01", "regra": "tipo_erro_invalido",    "descricao": "Tipo de erro além de CFG/RC/IL/ENP",  "acao": "score_zero", "mensagem": "Tipo de erro TDE-2 inválido — dado possivelmente fabricado" },
+      { "id": "TDE2_02", "regra": "estrategia_invalida",   "descricao": "Estratégia além de D/M/RV/A",         "acao": "score_zero", "mensagem": "Estratégia TDE-2 inválida — dado possivelmente fabricado" }
+    ]
+  },
+  "CONSCIENCIA_FONOLOGICA": {
+    "nome_completo": "Teste de Consciência Fonológica",
+    "niveis": ["A", "B", "C", "D", "E", "F", "G", "H"],
+    "niveis_descricao": {
+      "A": "Identificação de Rimas",
+      "B": "Aliteração",
+      "C": "Segmentação Silábica",
+      "D": "Fusão Silábica",
+      "E": "Segmentação Fonêmica",
+      "F": "Fusão Fonêmica",
+      "G": "Manipulação de Fonemas",
+      "H": "Inversão Silábica"
+    },
+    "esperado_4ano": {
+      "A": "Consolidado", "B": "Consolidado", "C": "Consolidado",
+      "D": "Consolidado", "E": "Consolidado", "F": "Consolidado/Em consolidação",
+      "G": "Em consolidação", "H": "Em consolidação/Emergente"
+    },
+    "nota_executiva": "Dificuldades nos níveis G e H em crianças com perfil TDAH devem ser interpretadas como impacto das funções executivas, não como déficit fonológico primário, quando A–F estiverem preservados.",
+    "validacoes": [
+      { "id": "CF_01", "regra": "nivel_invalido", "descricao": "Nível diferente de A–H", "acao": "score_zero", "mensagem": "Nível de Consciência Fonológica inválido — deve ser A, B, C, D, E, F, G ou H" }
+    ]
+  },
+  "LATERALIDADE": {
+    "nome_completo": "Avaliação de Lateralidade",
+    "sistemas": ["manual", "podal", "visual", "auditiva"],
+    "padroes": [
+      { "padrao": "Homogêneo (definido)", "descricao": "Todos os sistemas com a mesma dominância", "implicacao": "Típico — não constitui fator de risco" },
+      { "padrao": "Cruzado",             "descricao": "Dominância diferente entre sistemas",        "implicacao": "Pode correlacionar com dificuldades visoespaciais — investigar" },
+      { "padrao": "Indefinido/Misto",    "descricao": "Alternância inconsistente sem padrão",       "implicacao": "Pode indicar imaturidade neurológica — investigar" }
+    ],
+    "validacoes": [
+      { "id": "LAT_01", "regra": "sistema_invalido", "descricao": "Sistema diferente de manual/podal/visual/auditiva", "acao": "score_zero", "mensagem": "Sistema de lateralidade inválido — dado possivelmente fabricado" }
+    ]
+  },
+  "GLOBAL": {
+    "validacoes": [
+      { "id": "GLOBAL_01", "regra": "diagnostico_fechado_cid_dsm", "descricao": "Qualquer diagnóstico fechado CID/DSM em qualquer seção", "acao": "score_zero", "mensagem": "Violação ética crítica — nunca emitir diagnóstico fechado CID/DSM" }
+    ]
+  }
+}

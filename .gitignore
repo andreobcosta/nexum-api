@@ -1,5 +1,6 @@
 backend/.env
-backend/data/
+backend/data/*
+!backend/data/nexum_biblioteca_clinica_neuropsi.json
 backend/temp/
 node_modules/
 *.log
