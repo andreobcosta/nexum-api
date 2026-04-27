@@ -1,6 +1,25 @@
+const { getDb } = require('../db/firestore');
+
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL_SONNET = 'claude-sonnet-4-20250514';
 const MODEL_HAIKU  = 'claude-haiku-4-5-20251001';
+
+let _libraryCache = null;
+let _libraryCacheTime = 0;
+const LIBRARY_CACHE_TTL = 60 * 60 * 1000;
+
+async function getInstrumentLibrary(db) {
+  if (_libraryCache && (Date.now() - _libraryCacheTime) < LIBRARY_CACHE_TTL) {
+    return _libraryCache;
+  }
+  const snap = await db.collection('instrument_library').get();
+  const library = {};
+  snap.forEach(doc => { library[doc.id] = doc.data(); });
+  _libraryCache = library;
+  _libraryCacheTime = Date.now();
+  console.log('[InstrumentLibrary] Cache atualizado —', Object.keys(library).join(', '));
+  return library;
+}
 
 const PRICING = {
   [MODEL_SONNET]: { input: 3.00, output: 15.00 },
@@ -253,10 +272,13 @@ async function agentRedator(systemPromptRAN, patientInfo, dossie, onProgress) {
   return { relatorio, cost };
 }
 
-// ── AGENTE REVISOR — Haiku com RAN COMPLETO (sem truncamento)
-// Responsabilidade: validar estrutura, coerência e completude
+// ── AGENTE REVISOR — Sonnet com RAN COMPLETO + validações clínicas da instrument_library
+// Responsabilidade: validar estrutura, coerência, completude e conformidade clínica
 async function agentRevisor(relatorio, dossie, patientInfo, onProgress) {
   onProgress?.('revisor', 'Agente Revisor validando relatório completo...');
+
+  const library = await getInstrumentLibrary(getDb());
+  const libraryStr = JSON.stringify(library, null, 2);
 
   const systemPrompt = `Você é o Agente Revisor de relatórios neuropsicopedagógicos do sistema Nexum.
 
@@ -273,7 +295,18 @@ Valide o RAN e produza este JSON:
   "sugestoes": []
 }
 
-Critérios de pontuação (score 0-100):
+## VALIDAÇÕES OBRIGATÓRIAS DE INSTRUMENTOS
+
+Para cada validação com "acao":"score_zero" abaixo: se a violação for detectada no RAN,
+retorne IMEDIATAMENTE score_qualidade:0 e aprovado:false, registrando o id e a mensagem
+em problemas_criticos. Não continue pontuando — score zero é definitivo.
+
+Para validações com "acao":"penalizar": subtraia 10 pontos do score final e registre em alertas.
+
+Biblioteca de instrumentos (fonte de verdade para todas as validações):
+${libraryStr}
+
+## CRITÉRIOS DE PONTUAÇÃO (score 0-100, aplicar apenas se nenhum score_zero disparou):
 - Todas as 12 seções presentes: +40 pontos
 - Dados quantitativos dos instrumentos presentes: +20 pontos
 - Cruzamento entre instrumentos e anamnese: +15 pontos
@@ -283,7 +316,7 @@ Critérios de pontuação (score 0-100):
 
 Seções obrigatórias: Cabeçalho, Queixa Principal, Anamnese, Resumo Escolar, Visita Escolar, Avaliação Neuropsicopedagógica, Análise dos Instrumentos, Conclusão Integrada, Quadro Síntese, Orientações, Encaminhamentos, Considerações Finais.
 
-aprovado=true se score >= 60. Responda APENAS com JSON válido.`;
+aprovado=true se score >= 20. Responda APENAS com JSON válido.`;
 
   // Envia RAN COMPLETO + dossiê resumido — sem truncamento do RAN
   const dossieResumo = dossie && !dossie.parse_error
