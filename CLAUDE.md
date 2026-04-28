@@ -46,7 +46,7 @@ Sem linter ou framework de testes configurado.
 | Deploy frontend | Vercel (mesmo repositório GitHub) |
 | CI/CD | Cloud Build — push ao main → health check + rollback automático |
 | Memory / Timeout | 512Mi / 900s (corrigido em A3) |
-| Commit estável | E5 / carregarLayout() no docx-generator |
+| Commit estável | 533855c / P3 — feedback passivo |
 
 **Nunca** editar código diretamente no Cloud Run. Alterações chegam via git push → Cloud Build.
 
@@ -331,9 +331,9 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] E5 ✓: docx-generator.js carregarLayout() do Firestore — fonte, tamanho, cabecalho, logo_url
 - [x] P4a ✓: download PDF/DOCX corrigido — fetch com Authorization header + blob download
 - [x] P4b ✓: botão Voltar corrigido — fallback para list quando patientId ausente
-- [ ] P3: feedback passivo + revisão em lote (ver spec abaixo)
-- [ ] P1: editor WYSIWYG Quill no lugar do textarea Markdown
-- [ ] P2: inserção de nova seção/bloco no RAN
+- [x] P3 ✓: feedback passivo + revisão em lote — banner + painel before/after + /feedback/batch (533855c)
+- [x] P1 ✓: editor Quill WYSIWYG — parseMarkdownToHtml/parseHtmlToMarkdown (9821c6e)
+- [x] P2 ✓: botão "+ Adicionar seção" — id Date.now(), abre em edição imediato (9821c6e)
 
 ### Sprint 4 — Aprendizado Contínuo (após Sprint 3 com feedbacks acumulados)
 - [ ] G1-G5 ~: Firestore Vector Search + Motor de Feedback Haiku + RAG + Busca Externa
@@ -494,6 +494,8 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | `content_md` é fonte de verdade — Quill é só UI de edição | Salvar sempre em Markdown via `parseHtmlToMarkdown()` |
 | Feedback nunca interrompe edição — sempre passivo | P3: dialog ao salvar foi descartado — ver spec P3 |
 | `blocosEditados` captura `texto_original` no clique Editar | Capturar ANTES da edição, não após |
+| `POST /feedback/batch` aceita array — salva `texto_original` + `texto_editado` na collection feedbacks | P3: campos novos retrocompatíveis — `add()` não afeta feedbacks anteriores |
+| `enviarFeedbacks` filtra apenas `ok` e `erro` — `pular` ignorado | Não enviar "pular" ao backend; limpar `blocosEditados` e `feedbacksRevisao` após envio bem-sucedido |
 
 ### Bugs Corrigidos — Não Reintroduzir
 
