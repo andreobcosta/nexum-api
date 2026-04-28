@@ -235,6 +235,30 @@ router.post('/:patient_id/:report_id/feedback', async (req, res) => {
   }
 });
 
+// POST /api/reports/:patient_id/:report_id/feedback/batch — registra feedbacks em lote
+router.post('/:patient_id/:report_id/feedback/batch', async (req, res) => {
+  try {
+    const feedbacks = req.body;
+    if (!Array.isArray(feedbacks) || feedbacks.length === 0) return res.status(400).json({ error: 'Body deve ser array não vazio' });
+    const db = getDb();
+    const now = new Date().toISOString();
+    const saves = feedbacks.map(f => db.collection('feedbacks').add({
+      patient_id: req.params.patient_id,
+      report_id: req.params.report_id,
+      bloco_id: f.bloco_id || '',
+      bloco_heading: f.bloco_heading || '',
+      feedback_type: f.feedback_type,
+      texto_original: f.texto_original || '',
+      texto_editado: f.texto_editado || '',
+      created_at: now
+    }));
+    await Promise.all(saves);
+    res.status(201).json({ saved: saves.length });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao registrar feedbacks em lote', details: err.message });
+  }
+});
+
 // DELETE /api/reports/:patient_id/:report_id
 router.delete('/:patient_id/:report_id', async (req, res) => {
   try {
