@@ -62,6 +62,8 @@ app.use('/api/reports', verifyAuth, require('./routes/reports'));
 app.use('/api/import', verifyAuth, require('./routes/import'));
 app.use('/api/transcribe', verifyAuth, require('./routes/transcribe'));
 app.use('/api/costs', verifyAuth, require('./routes/costs'));
+app.use('/api/admin', verifyAuth, require('./routes/admin'));
+app.use('/api/settings', verifyAuth, require('./routes/settings'));
 
 // Fallback para o frontend (SPA)
 app.get('*', (req, res) => {
