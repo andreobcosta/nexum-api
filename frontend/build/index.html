@@ -282,7 +282,7 @@ function Avatar({name,size=40}){
 }
 
 /* ── PAGE: PATIENT LIST ── */
-function PatientListPage({onSelect,onNew,onImport,onCosts}){
+function PatientListPage({onSelect,onNew,onImport,onCosts,onSettings}){
   const[pts,setPts]=useState([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState('');
@@ -338,6 +338,7 @@ function PatientListPage({onSelect,onNew,onImport,onCosts}){
       <Header title="Nexum" subtitle="Patrízia Santarém · Neuropsicopedagogia" right={
         <div style={{display:'flex',gap:8}}>
           <button onClick={onCosts} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16}} title="Custos">💰</button>
+          <button onClick={onSettings} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16}} title="Configurações">⚙️</button>
           <button onClick={onImport} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:15}} title="Importar CSV">↑</button>
           <button onClick={onNew} title="Novo paciente" style={{background:'rgba(255,255,255,0.18)',border:'none',color:'#fff',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,fontWeight:300}}>+</button>
         </div>
@@ -1142,6 +1143,146 @@ function CostsPage({onBack}){
   )
 }
 
+/* ── PAGE: SETTINGS ── */
+function SettingsPage({onBack,onAdmin}){
+  const[form,setForm]=useState({fonte:'Arial',tamanho:'12',cabecalho:'',logo_url:''});
+  const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[toast,setToast]=useState(null);
+  useEffect(()=>{apiFetch('/settings/layout').then(d=>{setForm({fonte:d.fonte||'Arial',tamanho:String(d.tamanho||'12'),cabecalho:d.cabecalho||'',logo_url:d.logo_url||''});}).catch(()=>{}).finally(()=>setLoading(false));},[]);
+  const save=async()=>{setSaving(true);try{await apiFetch('/settings/layout',{method:'PUT',body:JSON.stringify(form)});setToast({message:'Layout salvo!',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setSaving(false);}};
+  const inp={width:'100%',padding:'12px 14px',border:'1.5px solid '+V.sand3,borderRadius:12,fontSize:15,background:V.white,outline:'none',color:V.ink};
+  const lb={fontSize:12,fontWeight:600,color:V.ink3,marginBottom:6,display:'block',textTransform:'uppercase',letterSpacing:'0.04em'};
+  if(loading)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Configurações" onBack={onBack}/><Spinner text="Carregando..."/></div>);
+  return(
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
+      <Header title="Configurações" subtitle="Layout do relatório" onBack={onBack}/>
+      <div style={{flex:1,overflow:'auto',padding:20}}>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div><label style={lb}>Fonte</label><select style={{...inp,cursor:'pointer'}} value={form.fonte} onChange={e=>setForm(f=>({...f,fonte:e.target.value}))}><option>Arial</option><option>Helvetica</option><option>Times New Roman</option><option>Georgia</option><option>Verdana</option><option>Courier New</option></select></div>
+            <div><label style={lb}>Tamanho</label><select style={{...inp,cursor:'pointer'}} value={form.tamanho} onChange={e=>setForm(f=>({...f,tamanho:e.target.value}))}><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option></select></div>
+          </div>
+          <div><label style={lb}>Cabeçalho</label><textarea value={form.cabecalho} onChange={e=>setForm(f=>({...f,cabecalho:e.target.value}))} placeholder="Texto do cabeçalho do relatório..." rows={4} style={{...inp,resize:'vertical',lineHeight:1.65}}/></div>
+          <div><label style={lb}>URL da logo</label><input style={inp} value={form.logo_url} onChange={e=>setForm(f=>({...f,logo_url:e.target.value}))} placeholder="https://..."/></div>
+          {form.logo_url&&<div style={{textAlign:'center',padding:12,background:V.white,borderRadius:12,border:'1px solid '+V.sand2}}><img src={form.logo_url} style={{maxHeight:60,maxWidth:'80%',objectFit:'contain'}} onError={e=>{e.target.style.display='none'}} alt="Preview da logo"/></div>}
+          <Btn onClick={save} loading={saving} full>Salvar configurações</Btn>
+          {onAdmin&&<button onClick={onAdmin} style={{width:'100%',padding:'12px 16px',borderRadius:12,border:'1px solid '+V.sand3,background:'none',cursor:'pointer',fontSize:13,color:V.ink3,fontFamily:'inherit',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>🔧 Administração do sistema<span style={{color:V.ink4}}>›</span></button>}
+        </div>
+      </div>
+      <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+    </div>
+  )
+}
+
+/* ── PAGE: ADMIN ── */
+function AdminPage({onBack}){
+  const[tab,setTab]=useState('prompt');
+  const[toast,setToast]=useState(null);
+  const[promptData,setPromptData]=useState(null);
+  const[editPrompt,setEditPrompt]=useState('');
+  const[savingPrompt,setSavingPrompt]=useState(false);
+  const[history,setHistory]=useState(null);
+  const[showHistory,setShowHistory]=useState(false);
+  const[rollingBack,setRollingBack]=useState(null);
+  const[configJson,setConfigJson]=useState('');
+  const[savingConfig,setSavingConfig]=useState(false);
+  const[actLog,setActLog]=useState(null);
+
+  useEffect(()=>{
+    if(tab==='prompt'&&!promptData){apiFetch('/admin/system-prompt').then(d=>{setPromptData(d);setEditPrompt(d.conteudo||'');}).catch(e=>setToast({message:e.message,type:'error'}));}
+    if(tab==='config'&&!configJson){apiFetch('/admin/config').then(d=>setConfigJson(JSON.stringify(d,null,2))).catch(e=>setToast({message:e.message,type:'error'}));}
+    if(tab==='log'&&!actLog){apiFetch('/admin/activity-log').then(setActLog).catch(e=>setToast({message:e.message,type:'error'}));}
+  },[tab]);
+
+  const savePrompt=async()=>{
+    if(!editPrompt.trim())return;
+    setSavingPrompt(true);
+    try{
+      await apiFetch('/admin/system-prompt',{method:'PUT',body:JSON.stringify({conteudo:editPrompt})});
+      setPromptData(d=>({...d,conteudo:editPrompt,versao:new Date().toISOString()}));
+      setHistory(null);setShowHistory(false);
+      setToast({message:'System prompt salvo!',type:'success'});
+    }catch(e){setToast({message:e.message,type:'error'});}
+    finally{setSavingPrompt(false);}
+  };
+
+  const loadHistory=async()=>{
+    if(history){setShowHistory(h=>!h);return;}
+    try{const h=await apiFetch('/admin/system-prompt/history');setHistory(h);setShowHistory(true);}
+    catch(e){setToast({message:e.message,type:'error'});}
+  };
+
+  const rollback=async(id)=>{
+    setRollingBack(id);
+    try{
+      await apiFetch('/admin/system-prompt/rollback/'+id,{method:'POST'});
+      const d=await apiFetch('/admin/system-prompt');
+      setPromptData(d);setEditPrompt(d.conteudo||'');
+      setHistory(null);setShowHistory(false);
+      setToast({message:'Rollback realizado!',type:'success'});
+    }catch(e){setToast({message:e.message,type:'error'});}
+    finally{setRollingBack(null);}
+  };
+
+  const saveConfig=async()=>{
+    setSavingConfig(true);
+    try{
+      const parsed=JSON.parse(configJson);
+      await apiFetch('/admin/config',{method:'PUT',body:JSON.stringify(parsed)});
+      setToast({message:'Configuração salva!',type:'success'});
+    }catch(e){setToast({message:'Erro: '+(e.message||'JSON inválido'),type:'error'});}
+    finally{setSavingConfig(false);}
+  };
+
+  const taStyle={width:'100%',padding:14,border:'1.5px solid '+V.sand3,borderRadius:12,fontSize:13,background:V.white,outline:'none',color:V.ink,resize:'vertical',lineHeight:1.65,fontFamily:'monospace'};
+
+  return(
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
+      <Header title="Administração" subtitle="Sistema" onBack={onBack}/>
+      <div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,flexShrink:0}}>
+        {[{k:'prompt',lb:'🗒 Prompt'},{k:'config',lb:'⚙️ Motor'},{k:'log',lb:'📋 Log'}].map(({k,lb})=>(<button key={k} onClick={()=>setTab(k)} style={{padding:'12px 14px',background:'none',border:'none',borderBottom:tab===k?'2px solid '+V.forest:'2px solid transparent',color:tab===k?V.forest:V.ink3,fontSize:12,fontWeight:tab===k?600:400,cursor:'pointer',fontFamily:'inherit',flex:1}}>{lb}</button>))}
+      </div>
+      <div style={{flex:1,overflow:'auto',padding:16,paddingBottom:32}}>
+
+        {tab==='prompt'&&(
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            {promptData?.versao&&<div style={{fontSize:11,color:V.ink3,padding:'6px 10px',background:V.sand,borderRadius:8,border:'1px solid '+V.sand2}}>Versão ativa: {new Date(promptData.versao).toLocaleString('pt-BR')} · {promptData.admin||''}</div>}
+            <textarea value={editPrompt} onChange={e=>setEditPrompt(e.target.value)} rows={16} style={taStyle} placeholder="Conteúdo do system prompt..."/>
+            <div style={{display:'flex',gap:8}}>
+              <Btn onClick={loadHistory} variant="secondary" full small>📋 Histórico</Btn>
+              <Btn onClick={savePrompt} loading={savingPrompt} disabled={!editPrompt.trim()} full small>Salvar</Btn>
+            </div>
+            {showHistory&&history&&(
+              <div style={{background:V.white,borderRadius:12,border:'1px solid '+V.sand2,overflow:'hidden'}}>
+                <div style={{padding:'10px 14px',borderBottom:'1px solid '+V.sand2,fontSize:11,fontWeight:700,color:V.ink3,textTransform:'uppercase',letterSpacing:'0.06em'}}>Versões arquivadas</div>
+                {history.length===0&&<div style={{padding:16,fontSize:13,color:V.ink3,textAlign:'center'}}>Nenhuma versão arquivada</div>}
+                {history.map(h=>(<div key={h.id} style={{padding:'10px 14px',borderBottom:'1px solid '+V.sand2,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><div><div style={{fontSize:12,fontWeight:600,color:V.ink}}>{new Date(h.versao||h.archived_at).toLocaleString('pt-BR')}</div><div style={{fontSize:11,color:V.ink3}}>{h.admin}</div></div><Btn onClick={()=>rollback(h.id)} loading={rollingBack===h.id} variant="secondary" small>Restaurar</Btn></div>))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab==='config'&&(
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            <div style={{fontSize:12,color:V.ink3,padding:'8px 12px',background:V.amberLight,borderRadius:8,border:'1px solid '+V.amber}}>⚠ Edite com cuidado — campos inválidos podem afetar a geração de RANs.</div>
+            <textarea value={configJson} onChange={e=>setConfigJson(e.target.value)} rows={20} style={taStyle} placeholder="{}"/>
+            <Btn onClick={saveConfig} loading={savingConfig} disabled={!configJson.trim()} full>Salvar configuração</Btn>
+          </div>
+        )}
+
+        {tab==='log'&&(
+          !actLog?<Spinner text="Carregando log..."/>:
+          actLog.length===0?<div style={{textAlign:'center',padding:40,color:V.ink3}}><div style={{fontSize:32,marginBottom:8}}>📋</div>Nenhuma entrada no log</div>:
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {actLog.map(e=>(<div key={e.id} style={{background:V.white,borderRadius:12,padding:'10px 14px',border:'1px solid '+V.sand2}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:V.ink,fontFamily:'monospace'}}>{e.action}</div><div style={{fontSize:11,color:V.ink3,marginTop:3}}>{e.admin}</div></div><div style={{fontSize:10,color:V.ink4,flexShrink:0,textAlign:'right'}}>{new Date(e.created_at).toLocaleString('pt-BR')}</div></div></div>))}
+          </div>
+        )}
+
+      </div>
+      <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+    </div>
+  )
+}
+
 /* ── APP ROUTER com URL hash para persistência ── */
 function parseHash(){
   const hash=window.location.hash.slice(1)||'list';
@@ -1183,8 +1324,10 @@ function App(){
 
   checkAuth();
   return <>
-    {page.name==='list'&&<PatientListPage onSelect={id=>nav('detail',{patientId:id})} onNew={()=>nav('new')} onImport={()=>nav('import')} onCosts={()=>nav('costs')}/>}
+    {page.name==='list'&&<PatientListPage onSelect={id=>nav('detail',{patientId:id})} onNew={()=>nav('new')} onImport={()=>nav('import')} onCosts={()=>nav('costs')} onSettings={()=>nav('settings')}/>}
     {page.name==='costs'&&<CostsPage onBack={()=>nav('list')}/>}
+    {page.name==='settings'&&<SettingsPage onBack={()=>nav('list')} onAdmin={()=>nav('admin')}/>}
+    {page.name==='admin'&&<AdminPage onBack={()=>nav('settings')}/>}
     {page.name==='import'&&<ImportPage onBack={()=>nav('list')}/>}
     {page.name==='new'&&<NewPatientPage onBack={()=>nav('list')} onCreated={id=>nav('detail',{patientId:id})}/>}
     {page.name==='detail'&&<PatientDetailPage patientId={page.patientId} onBack={()=>nav('list')} onCapture={(id,cat)=>nav('capture',{patientId:id,initialCat:cat})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})}/>}
