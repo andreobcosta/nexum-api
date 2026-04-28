@@ -837,6 +837,8 @@ function ReportViewPage({reportId,patientId,onBack}){
     }
   };
 
+  const baixar=async(tipo)=>{setShowDownloadMenu(false);try{const token=localStorage.getItem('nexum_token');const res=await fetch('/api/reports/'+patientId+'/'+reportId+'/'+tipo,{headers:{Authorization:'Bearer '+token}});if(!res.ok)throw new Error('HTTP '+res.status);const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='RAN_v'+rpt.version+'.'+tipo;a.click();URL.revokeObjectURL(url);}catch(e){setToast({message:'Erro ao baixar: '+e.message,type:'error'});}};
+
   if(loading)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Relatório" onBack={onBack}/><Spinner text="Carregando relatório..."/></div>;
   if(!rpt)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>;
 
@@ -851,8 +853,8 @@ function ReportViewPage({reportId,patientId,onBack}){
           <div style={{position:'relative'}}>
             <button onClick={()=>setShowDownloadMenu(m=>!m)} title="Baixar arquivo" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ Baixar</button>
             {showDownloadMenu&&<div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:V.white,borderRadius:12,boxShadow:'0 4px 20px rgba(0,0,0,0.15)',padding:'6px',zIndex:200,minWidth:170,border:'1px solid '+V.sand2}}>
-              <button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/docx','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📄 Word (.docx)</button>
-              <button onClick={()=>{window.open('/api/reports/'+patientId+'/'+reportId+'/pdf','_blank');setShowDownloadMenu(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>
+              <button onClick={()=>baixar('docx')} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📄 Word (.docx)</button>
+              <button onClick={()=>baixar('pdf')} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>
             </div>}
           </div>
           {/* Botão Editar — abre no Google Docs, convertendo se necessário */}
@@ -1332,7 +1334,7 @@ function App(){
     {page.name==='new'&&<NewPatientPage onBack={()=>nav('list')} onCreated={id=>nav('detail',{patientId:id})}/>}
     {page.name==='detail'&&<PatientDetailPage patientId={page.patientId} onBack={()=>nav('list')} onCapture={(id,cat)=>nav('capture',{patientId:id,initialCat:cat})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})}/>}
     {page.name==='capture'&&<CapturePage patientId={page.patientId} initialCat={page.initialCat} onBack={()=>nav('detail',{patientId:page.patientId})} onDone={()=>nav('detail',{patientId:page.patientId})}/>}
-    {page.name==='report'&&<ReportViewPage reportId={page.reportId} patientId={page.patientId} onBack={()=>nav('detail',{patientId:page.patientId})}/>}
+    {page.name==='report'&&<ReportViewPage reportId={page.reportId} patientId={page.patientId} onBack={()=>page.patientId?nav('detail',{patientId:page.patientId}):nav('list')}/>}
     {page.name==='edit'&&<EditPatientPage patientId={page.patientId} onBack={()=>nav('detail',{patientId:page.patientId})} onSaved={()=>nav('detail',{patientId:page.patientId})}/>}
   </>
 }
