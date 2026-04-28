@@ -34,12 +34,39 @@ function isTextReadable(mimeType) {
   return TEXT_MIME_TYPES.some(t => mimeType?.includes(t.split('/')[1]));
 }
 
+// Detecta o instrumento pelo nome do arquivo (case-insensitive)
+function detectarInstrumento(nomeArquivo) {
+  if (!nomeArquivo) return null;
+  const nome = nomeArquivo.toLowerCase();
+  if (nome.includes('etdah')) return 'ETDAH';
+  if (nome.includes('cars')) return 'CARS';
+  if (nome.includes('tde')) return 'TDE';
+  if (nome.includes('lateralidade')) return 'LATERALIDADE';
+  if (nome.includes('fonologica') || nome.includes('fonológica')) return 'FONOLOGICA';
+  return null;
+}
+
+// Retorna prompt específico por tipo de instrumento
+function promptPorInstrumento(tipo) {
+  const base = `Para campos manuscritos: transcreva o que conseguir ler, sinalize com [ILEGÍVEL] o que não conseguir.\nPreserve números, datas e valores exatamente como aparecem.\nNÃO interprete os dados — apenas extraia e organize. A interpretação é feita por outro agente.`;
+  const prompts = {
+    ETDAH:       `Você está extraindo um protocolo ETDAH (Escala de Transtorno de Déficit de Atenção e Hiperatividade).\nExtraia item a item, identificando qual opção foi marcada em cada item (nunca/raramente/às vezes/frequentemente/sempre ou equivalente).\nInclua obrigatoriamente: dados de identificação, todos os itens numerados com a opção marcada, subtotais por fator (RE/HI/CA/A), total geral, percentil e classificação.\n${base}`,
+    CARS:        `Você está extraindo um protocolo CARS (Childhood Autism Rating Scale).\nExtraia a pontuação marcada em cada um dos 15 domínios (valores possíveis: 1, 1.5, 2, 2.5, 3, 3.5 ou 4).\nInclua obrigatoriamente: pontuação de cada domínio com sua descrição, total geral e qualquer observação clínica registrada.\n${base}`,
+    TDE:         `Você está extraindo um protocolo TDE-2 (Teste de Desempenho Escolar).\nExtraia: número de acertos por subteste (escrita, leitura, aritmética), tipos de erro identificados (CFG/RC/IL/ENP), estratégias usadas (D/M/RV/A) e classificação por nível escolar.\nInclua todos os itens respondidos com o resultado de cada um.\n${base}`,
+    LATERALIDADE: `Você está extraindo um protocolo de Avaliação de Lateralidade.\nExtraia o resultado para cada sistema avaliado: manual (destro/sinistro/misto), podal, visual e auditivo.\nInclua todas as tarefas realizadas e o resultado individual de cada uma.\n${base}`,
+    FONOLOGICA:  `Você está extraindo um protocolo de Avaliação de Consciência Fonológica.\nExtraia o desempenho por nível (A a H), incluindo número de acertos, erros e classificação em cada nível.\nPreserve todos os itens testados e as respostas registradas.\n${base}`
+  };
+  return prompts[tipo] || null;
+}
+
 // Extrai texto de PDF ou imagem via Claude vision
 // content: buffer base64 do arquivo
 // mimeType: tipo MIME do arquivo
 // fileName: nome do arquivo (para contexto)
 async function extractTextFromFile(contentBase64, mimeType, fileName = '') {
-  const systemPrompt = `Você é um extrator especializado de dados clínicos de documentos neuropsicopedagógicos.
+  const tipoInstrumento = detectarInstrumento(fileName);
+  if (tipoInstrumento) console.log(`[PDF-Extractor] Instrumento detectado: ${tipoInstrumento} — usando prompt específico`);
+  const systemPrompt = promptPorInstrumento(tipoInstrumento) || `Você é um extrator especializado de dados clínicos de documentos neuropsicopedagógicos.
 
 Sua função é extrair TODO o conteúdo relevante de PDFs e imagens de protocolos de avaliação, relatórios escolares, laudos médicos e outros documentos clínicos.
 
