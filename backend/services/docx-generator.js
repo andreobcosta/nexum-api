@@ -1,9 +1,10 @@
 // Gerador de DOCX para RAN — identidade visual de Patrízia Santarém
 const {
-  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+  Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
   AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType,
   Header, Footer, PageNumber, LevelFormat, VerticalAlign, PageBreak
 } = require('docx');
+const { getDb } = require('../db/firestore');
 
 // Paleta de cores
 const VERDE = '3D4A38';
@@ -11,6 +12,12 @@ const VERDE_LIGHT = 'E8EDE6';
 const CINZA = '7A7872';
 const BORDA = 'D5D2CC';
 const BRANCO = 'FFFFFF';
+
+const FONTES_PERMITIDAS = ['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Courier New'];
+
+// Estado de layout por geração — monousuário, sem risco de corrida
+let _fonte = 'Arial';
+let _tamanho = 22; // half-points = 11pt padrão
 
 // Margens: 1440 DXA = 1 polegada
 const MARGEM = 1440;
@@ -21,6 +28,48 @@ const LARGURA_CONTEUDO = 9026;
 
 function paragrafoVazio(espacoAntes = 0, espacoDepois = 0) {
   return new Paragraph({ children: [new TextRun('')], spacing: { before: espacoAntes, after: espacoDepois } });
+}
+
+async function carregarLayout(userEmail) {
+  const defaults = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null };
+  if (!userEmail) return defaults;
+  try {
+    const doc = await getDb().collection('report_layout').doc(userEmail).get();
+    if (!doc.exists) return defaults;
+    const d = doc.data();
+    const fonteValida = FONTES_PERMITIDAS.includes(d.fonte) ? d.fonte : 'Arial';
+    const ptNum = parseInt(d.tamanho, 10);
+    const tamanhoHP = (!isNaN(ptNum) && ptNum >= 8 && ptNum <= 36) ? ptNum * 2 : 22;
+    return { fonte: fonteValida, tamanho: tamanhoHP, cabecalho: d.cabecalho || null, logo_url: d.logo_url || null };
+  } catch (err) {
+    console.warn('[DocxGenerator] carregarLayout falhou — usando defaults:', err.message);
+    return defaults;
+  }
+}
+
+async function baixarImagem(url) {
+  return new Promise((resolve) => {
+    try {
+      const proto = url.startsWith('https') ? require('https') : require('http');
+      const req = proto.get(url, (res) => {
+        if (res.statusCode < 200 || res.statusCode >= 300) { resolve(null); return; }
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', () => resolve(null));
+      });
+      req.on('error', () => resolve(null));
+      req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+    } catch { resolve(null); }
+  });
+}
+
+function detectarTipoImagem(buffer) {
+  if (!buffer || buffer.length < 4) return 'png';
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8) return 'jpg';
+  if (buffer[0] === 0x89 && buffer[1] === 0x50) return 'png';
+  if (buffer[0] === 0x47 && buffer[1] === 0x49) return 'gif';
+  return 'png';
 }
 
 function tituloPrincipal(texto) {
@@ -81,12 +130,12 @@ function processarInline(texto, opcoes = {}) {
       text: textoLimpo,
       bold: isBold || opcoes.bold,
       italics: isItalic || opcoes.italic,
-      size: opcoes.size || 20,
+      size: opcoes.size || _tamanho,
       color: opcoes.color || '2C2C2A',
-      font: 'Arial'
+      font: _fonte
     }));
   }
-  return runs.length ? runs : [new TextRun({ text: texto, size: 20, font: 'Arial', color: '2C2C2A' })];
+  return runs.length ? runs : [new TextRun({ text: texto, size: _tamanho, font: _fonte, color: '2C2C2A' })];
 }
 
 function itemLista(texto) {
@@ -95,8 +144,8 @@ function itemLista(texto) {
     spacing: { before: 30, after: 30 },
     indent: { left: 360, hanging: 180 },
     children: [
-      new TextRun({ text: '• ', color: VERDE, bold: true, size: 20, font: 'Arial' }),
-      ...processarInline(limpo, { size: 20 })
+      new TextRun({ text: '• ', color: VERDE, bold: true, size: _tamanho, font: _fonte }),
+      ...processarInline(limpo, { size: _tamanho })
     ]
   });
 }
@@ -156,19 +205,26 @@ function gerarTabela(rows) {
 
 // ── Cabeçalho e Rodapé ────────────────────────────────────────────────────
 
-function gerarHeader() {
-  return new Header({
-    children: [
-      new Paragraph({
-        border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: VERDE, space: 4 } },
-        spacing: { after: 80 },
-        children: [
-          new TextRun({ text: 'Relatório de Avaliação Neuropsicopedagógica', size: 16, color: CINZA, font: 'Arial' }),
-          new TextRun({ text: '     |     Patrízia Almeida Santarém Costa', size: 16, color: CINZA, font: 'Arial', italics: true }),
-        ]
-      })
-    ]
-  });
+function gerarHeader(cabecalho, logoBuffer) {
+  const children = [];
+  if (logoBuffer) {
+    children.push(new Paragraph({
+      spacing: { before: 0, after: 40 },
+      children: [new ImageRun({ data: logoBuffer, transformation: { width: 120, height: 40 }, type: detectarTipoImagem(logoBuffer) })]
+    }));
+  }
+  const headerRuns = cabecalho
+    ? [new TextRun({ text: cabecalho, size: 16, color: CINZA, font: 'Arial' })]
+    : [
+        new TextRun({ text: 'Relatório de Avaliação Neuropsicopedagógica', size: 16, color: CINZA, font: 'Arial' }),
+        new TextRun({ text: '     |     Patrízia Almeida Santarém Costa', size: 16, color: CINZA, font: 'Arial', italics: true }),
+      ];
+  children.push(new Paragraph({
+    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: VERDE, space: 4 } },
+    spacing: { after: 80 },
+    children: headerRuns
+  }));
+  return new Header({ children });
 }
 
 function gerarFooter() {
@@ -331,7 +387,18 @@ function gerarBlocoIdentificacao(linhasSecao1) {
 
 // ── Função principal exportada ─────────────────────────────────────────────
 
-async function gerarDocx(contentMd, nomeArquivo) {
+async function gerarDocx(contentMd, nomeArquivo, userEmail) {
+  let layout = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null };
+  let logoBuffer = null;
+  try {
+    layout = await carregarLayout(userEmail);
+    if (layout.logo_url) logoBuffer = await baixarImagem(layout.logo_url);
+  } catch (err) {
+    console.warn('[DocxGenerator] Erro ao aplicar layout — usando defaults:', err.message);
+  }
+  _fonte = layout.fonte;
+  _tamanho = layout.tamanho;
+
   // Separa seção 1 (cabeçalho) do resto
   const linhas = contentMd.split('\n');
   const inicioSecao2 = linhas.findIndex(l => l.startsWith('## ') && !l.includes('RELATÓRIO'));
@@ -344,7 +411,7 @@ async function gerarDocx(contentMd, nomeArquivo) {
   const doc = new Document({
     styles: {
       default: {
-        document: { run: { font: 'Arial', size: 20, color: '2C2C2A' } }
+        document: { run: { font: layout.fonte, size: layout.tamanho, color: '2C2C2A' } }
       }
     },
     sections: [{
@@ -354,7 +421,7 @@ async function gerarDocx(contentMd, nomeArquivo) {
           margin: { top: MARGEM, right: MARGEM, bottom: MARGEM, left: MARGEM }
         }
       },
-      headers: { default: gerarHeader() },
+      headers: { default: gerarHeader(layout.cabecalho, logoBuffer) },
       footers: { default: gerarFooter() },
       children: [
         // Título do documento

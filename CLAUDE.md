@@ -46,7 +46,7 @@ Sem linter ou framework de testes configurado.
 | Deploy frontend | Vercel (mesmo repositório GitHub) |
 | CI/CD | Cloud Build — push ao main → health check + rollback automático |
 | Memory / Timeout | 512Mi / 900s (corrigido em A3) |
-| Commit estável | 6e7e65d / AdminPage+SettingsPage frontend |
+| Commit estável | E5 / carregarLayout() no docx-generator |
 
 **Nunca** editar código diretamente no Cloud Run. Alterações chegam via git push → Cloud Build.
 
@@ -103,7 +103,7 @@ Sem linter ou framework de testes configurado.
 | services/drive-sync.js | Sync bidirecional webhooks Drive | Inativo sem APP_URL |
 | services/pdf-extractor.js | Extração PDF/imagem/DOCX + score legibilidade | Atualizado C1+C3+C4 |
 | services/transcription.js | STT Chirp 2 + Compressor | Atualizado B5 |
-| services/docx-generator.js | Gera DOCX — fonte Arial (corrigido E6) | Atualizado E6 |
+| services/docx-generator.js | Gera DOCX — carregarLayout() do Firestore + fallback Arial/11pt | Atualizado E5+E6 |
 | prompts/system_prompt_ran.md | System prompt RAN — LOCK PERMANENTE | Nunca alterar ética/não-diagnóstico |
 
 ### Frontend (`frontend/src/`)
@@ -328,7 +328,7 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] B5 ✓: Compressor (substitui Identificador — spec abaixo)
 - [x] E2 ✓: edição inline por bloco — parseBlocks + textarea por bloco + PATCH content_md (1fc11e7)
 - [x] E3 ✓: feedback por bloco — botões ✓✗✎ + borderLeft colorido + collection feedbacks (1fc11e7)
-- [ ] E5 ~: docx-generator.js carregarLayout() do Firestore
+- [x] E5 ✓: docx-generator.js carregarLayout() do Firestore — fonte, tamanho, cabecalho, logo_url
 
 ### Sprint 4 — Aprendizado Contínuo (após Sprint 3 com feedbacks acumulados)
 - [ ] G1-G5 ~: Firestore Vector Search + Motor de Feedback Haiku + RAG + Busca Externa
@@ -426,6 +426,9 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | `system_prompts` tem sempre um doc `active`; versões deslocadas vão para `system_prompts_history` | `set()` no `active`, `add()` no history — nunca acumular versões em `system_prompts` |
 | Rollback recebe doc ID do Firestore (campo `id` do GET /history), não o timestamp `versao` | ISO timestamp como `:versao` seria ambíguo se duas versões coincidirem |
 | `logActivity(db, action, admin, details)` centralizado em admin.js | Toda ação de escrita em admin registra em `activity_log` — sem duplicação |
+| `gerarDocx` usa `_fonte`/`_tamanho` como estado de módulo (module-level mutable) | Monousuário — sem risco de corrida; `gerarDocxDeHtml` herda o estado da última geração (dívida técnica para multi-tenant na Fase 4) |
+| `gerarDocx(contentMd, nomeArquivo, userEmail)` — `userEmail` é o terceiro parâmetro opcional | Chamadas existentes sem o terceiro arg continuam válidas — fallback para defaults Arial/11pt |
+| Títulos de seção e tabela de identificação mantêm Arial hardcoded em E5 | Elementos estruturais de identidade visual; fonte configurável aplica-se apenas ao corpo do texto (processarInline + itemLista) |
 
 ### Bugs Corrigidos — Não Reintroduzir
 
@@ -445,7 +448,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 - **Sem testes automatizados** — validação por uso clínico real (Princípio do Feedback)
 - **Sem ambiente de staging** — apenas produção (Cloud Run) e local (`docker-compose`)
 - **C2 pendente** — prompt específico por instrumento ainda não implementado (Sprint 2 restante)
-- **E5 pendente** — `carregarLayout()` do Firestore em `docx-generator.js` ainda não implementado (Sprint 3)
+- **`gerarDocxDeHtml` multi-tenant** — dívida técnica: usa `_fonte`/`_tamanho` da última geração via estado de módulo; precisa de refactor para Fase 4 (multi-tenant)
 
 ---
 
