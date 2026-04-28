@@ -198,6 +198,43 @@ router.get('/:patient_id/:report_id', async (req, res) => {
   }
 });
 
+// GET /api/reports/:patient_id/:report_id/feedback — feedbacks existentes do relatório
+router.get('/:patient_id/:report_id/feedback', async (req, res) => {
+  try {
+    const db = getDb();
+    const snap = await db.collection('feedbacks').where('report_id', '==', req.params.report_id).get();
+    const map = {};
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      if (!map[d.bloco_id] || d.created_at > map[d.bloco_id].created_at) map[d.bloco_id] = d;
+    }
+    res.json(Object.fromEntries(Object.entries(map).map(([k,v])=>[k,v.feedback_type])));
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar feedbacks', details: err.message });
+  }
+});
+
+// POST /api/reports/:patient_id/:report_id/feedback — registra feedback de um bloco
+router.post('/:patient_id/:report_id/feedback', async (req, res) => {
+  try {
+    const { bloco_id, bloco_heading, feedback_type, bloco_content } = req.body;
+    if (!bloco_id || !feedback_type) return res.status(400).json({ error: 'bloco_id e feedback_type são obrigatórios' });
+    const db = getDb();
+    await db.collection('feedbacks').add({
+      patient_id: req.params.patient_id,
+      report_id: req.params.report_id,
+      bloco_id,
+      bloco_heading: bloco_heading || '',
+      feedback_type,
+      bloco_content: bloco_content || '',
+      created_at: new Date().toISOString()
+    });
+    res.status(201).json({ message: 'Feedback registrado', bloco_id, feedback_type });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao registrar feedback', details: err.message });
+  }
+});
+
 // DELETE /api/reports/:patient_id/:report_id
 router.delete('/:patient_id/:report_id', async (req, res) => {
   try {
