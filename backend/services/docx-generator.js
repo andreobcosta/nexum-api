@@ -162,6 +162,15 @@ function parsearTabela(linhas) {
   return rows;
 }
 
+function cellaParaRuns(cellText, bold, color) {
+  const partes = cellText.replace(/\*\*/g, '').split(/<br\s*\/?>/gi);
+  return partes.map((texto, idx) => {
+    const run = { text: texto.trim(), bold, color, size: 18, font: 'Arial' };
+    if (idx > 0) run.break = 1;
+    return new TextRun(run);
+  });
+}
+
 function gerarTabela(rows) {
   if (!rows.length) return null;
   const numCols = rows[0].length;
@@ -188,13 +197,7 @@ function gerarTabela(rows) {
             verticalAlign: VerticalAlign.CENTER,
             children: [new Paragraph({
               alignment: AlignmentType.LEFT,
-              children: [new TextRun({
-                text: cellText.replace(/\*\*/g, ''),
-                bold: rowIdx === 0 || colIdx === 0,
-                color: rowIdx === 0 ? BRANCO : '2C2C2A',
-                size: 18,
-                font: 'Arial'
-              })]
+              children: cellaParaRuns(cellText, rowIdx === 0 || colIdx === 0, rowIdx === 0 ? BRANCO : '2C2C2A')
             })]
           })
         )
