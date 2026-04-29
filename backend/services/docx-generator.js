@@ -31,7 +31,7 @@ function paragrafoVazio(espacoAntes = 0, espacoDepois = 0) {
 }
 
 async function carregarLayout(userEmail) {
-  const defaults = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null };
+  const defaults = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null, logo_base64: null };
   if (!userEmail) return defaults;
   try {
     const doc = await getDb().collection('report_layout').doc(userEmail).get();
@@ -40,7 +40,7 @@ async function carregarLayout(userEmail) {
     const fonteValida = FONTES_PERMITIDAS.includes(d.fonte) ? d.fonte : 'Arial';
     const ptNum = parseInt(d.tamanho, 10);
     const tamanhoHP = (!isNaN(ptNum) && ptNum >= 8 && ptNum <= 36) ? ptNum * 2 : 22;
-    return { fonte: fonteValida, tamanho: tamanhoHP, cabecalho: d.cabecalho || null, logo_url: d.logo_url || null };
+    return { fonte: fonteValida, tamanho: tamanhoHP, cabecalho: d.cabecalho || null, logo_url: d.logo_url || null, logo_base64: d.logo_base64 || null };
   } catch (err) {
     console.warn('[DocxGenerator] carregarLayout falhou — usando defaults:', err.message);
     return defaults;
@@ -391,11 +391,16 @@ function gerarBlocoIdentificacao(linhasSecao1) {
 // ── Função principal exportada ─────────────────────────────────────────────
 
 async function gerarDocx(contentMd, nomeArquivo, userEmail) {
-  let layout = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null };
+  let layout = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null, logo_base64: null };
   let logoBuffer = null;
   try {
     layout = await carregarLayout(userEmail);
-    if (layout.logo_url) logoBuffer = await baixarImagem(layout.logo_url);
+    if (layout.logo_base64) {
+      const b64 = layout.logo_base64.split(',')[1] || layout.logo_base64;
+      logoBuffer = Buffer.from(b64, 'base64');
+    } else if (layout.logo_url) {
+      logoBuffer = await baixarImagem(layout.logo_url);
+    }
   } catch (err) {
     console.warn('[DocxGenerator] Erro ao aplicar layout — usando defaults:', err.message);
   }

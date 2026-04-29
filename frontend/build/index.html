@@ -1175,12 +1175,14 @@ function CostsPage({onBack}){
 
 /* ── PAGE: SETTINGS ── */
 function SettingsPage({onBack,onAdmin}){
-  const[form,setForm]=useState({fonte:'Arial',tamanho:'12',cabecalho:'',logo_url:''});
+  const[form,setForm]=useState({fonte:'Arial',tamanho:'12',cabecalho:'',logo_url:'',logo_base64:''});
   const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[toast,setToast]=useState(null);
-  useEffect(()=>{apiFetch('/settings/layout').then(d=>{setForm({fonte:d.fonte||'Arial',tamanho:String(d.tamanho||'12'),cabecalho:d.cabecalho||'',logo_url:d.logo_url||''});}).catch(()=>{}).finally(()=>setLoading(false));},[]);
+  const[logoScale,setLogoScale]=useState(100);const[logoOriginal,setLogoOriginal]=useState('');
+  useEffect(()=>{apiFetch('/settings/layout').then(d=>{setForm({fonte:d.fonte||'Arial',tamanho:String(d.tamanho||'12'),cabecalho:d.cabecalho||'',logo_url:d.logo_url||'',logo_base64:d.logo_base64||''});if(d.logo_base64)setLogoOriginal(d.logo_base64);}).catch(()=>{}).finally(()=>setLoading(false));},[]);
   const save=async()=>{setSaving(true);try{await apiFetch('/settings/layout',{method:'PUT',body:JSON.stringify(form)});setToast({message:'Layout salvo!',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setSaving(false);}};
   const inp={width:'100%',padding:'12px 14px',border:'1.5px solid '+V.sand3,borderRadius:12,fontSize:15,background:V.white,outline:'none',color:V.ink};
   const lb={fontSize:12,fontWeight:600,color:V.ink3,marginBottom:6,display:'block',textTransform:'uppercase',letterSpacing:'0.04em'};
+  const resizarImagem=(dataUrl,scale,cb)=>{const img=new Image();img.onload=function(){const maxW=400*(scale/100),maxH=120*(scale/100);const ratio=Math.min(maxW/img.width,maxH/img.height,1);const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*ratio);canvas.height=Math.round(img.height*ratio);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);cb(canvas.toDataURL('image/png'));};img.src=dataUrl;};
   if(loading)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Configurações" onBack={onBack}/><Spinner text="Carregando..."/></div>);
   return(
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
@@ -1192,8 +1194,18 @@ function SettingsPage({onBack,onAdmin}){
             <div><label style={lb}>Tamanho</label><select style={{...inp,cursor:'pointer'}} value={form.tamanho} onChange={e=>setForm(f=>({...f,tamanho:e.target.value}))}><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option></select></div>
           </div>
           <div><label style={lb}>Cabeçalho</label><textarea value={form.cabecalho} onChange={e=>setForm(f=>({...f,cabecalho:e.target.value}))} placeholder="Texto do cabeçalho do relatório..." rows={4} style={{...inp,resize:'vertical',lineHeight:1.65}}/></div>
-          <div><label style={lb}>URL da logo</label><input style={inp} value={form.logo_url} onChange={e=>setForm(f=>({...f,logo_url:e.target.value}))} placeholder="https://..."/></div>
-          {form.logo_url&&<div style={{textAlign:'center',padding:12,background:V.white,borderRadius:12,border:'1px solid '+V.sand2}}><img src={form.logo_url} style={{maxHeight:60,maxWidth:'80%',objectFit:'contain'}} onError={e=>{e.target.style.display='none'}} alt="Preview da logo"/></div>}
+          <div>
+            <label style={lb}>Logo do Relatório</label>
+            <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+              <button onClick={()=>document.getElementById('logo-file-input').click()} style={{padding:'8px 14px',borderRadius:8,border:'1px solid '+V.sand3,background:V.white,cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>Escolher imagem</button>
+              <input id="logo-file-input" type="file" accept="image/*" style={{display:'none'}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{setLogoOriginal(ev.target.result);resizarImagem(ev.target.result,logoScale,b64=>setForm(f=>({...f,logo_base64:b64})));};reader.readAsDataURL(file);}}/>
+              {form.logo_base64&&<button onClick={()=>{setForm(f=>({...f,logo_base64:''}));setLogoOriginal('');}} style={{fontSize:12,padding:'4px 8px',background:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,cursor:'pointer',fontFamily:'inherit'}}>✕ Remover</button>}
+            </div>
+            {form.logo_base64&&<div style={{marginBottom:8,padding:8,background:V.white,borderRadius:8,border:'1px solid '+V.sand2,textAlign:'center'}}><img src={form.logo_base64} style={{maxHeight:60,maxWidth:'80%',objectFit:'contain'}} alt="Preview da logo"/></div>}
+            {logoOriginal&&<div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}><label style={{fontSize:12,color:V.ink3,minWidth:90}}>{'Tamanho: '+logoScale+'%'}</label><input type="range" min={50} max={100} value={logoScale} style={{flex:1}} onChange={e=>{const s=parseInt(e.target.value);setLogoScale(s);resizarImagem(logoOriginal,s,b64=>setForm(f=>({...f,logo_base64:b64})));}} /></div>}
+            <label style={{...lb,marginTop:8}}>URL da logo (alternativa)</label>
+            <input style={inp} value={form.logo_url} onChange={e=>setForm(f=>({...f,logo_url:e.target.value}))} placeholder="https://... (usado se nenhuma imagem foi enviada acima)"/>
+          </div>
           <Btn onClick={save} loading={saving} full>Salvar configurações</Btn>
           {onAdmin&&<button onClick={onAdmin} style={{width:'100%',padding:'12px 16px',borderRadius:12,border:'1px solid '+V.sand3,background:'none',cursor:'pointer',fontSize:13,color:V.ink3,fontFamily:'inherit',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>🔧 Administração do sistema<span style={{color:V.ink4}}>›</span></button>}
         </div>
