@@ -465,7 +465,7 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
           buffer = await drive.exportAsPdf(report.drive_file_id);
         }
       } catch (driveErr) {
-        console.warn('[PDF] Falha ao exportar do Drive:', driveErr.message);
+        console.error('[PDF] Falha Drive export — file_id:', report.drive_file_id, '| erro:', driveErr.message, '| stack:', driveErr.stack);
       }
     }
 

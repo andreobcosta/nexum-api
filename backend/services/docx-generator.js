@@ -588,7 +588,8 @@ async function gerarPdfDeMarkdown(contentMd, patientName, version) {
     const chunks = [];
     const doc = new PDFDocument({
       size: 'A4',
-      margins: { top: 60, bottom: 60, left: 70, right: 70 },
+      margins: { top: 85, bottom: 57, left: 85, right: 57 },
+      lineGap: 6,
       info: {
         Title: `RAN - ${patientName} - v${version}`,
         Author: 'Patrízia Almeida Santarém Costa',
@@ -609,9 +610,9 @@ async function gerarPdfDeMarkdown(contentMd, patientName, version) {
 
     // Header em cada página
     doc.on('pageAdded', () => {
-      doc.fontSize(8).fillColor(CINZA)
-        .text('Relatório de Avaliação Neuropsicopedagógica · Patrízia Almeida Santarém Costa', 70, 20, { align: 'center' });
-      doc.moveTo(70, 35).lineTo(525, 35).strokeColor(VERDE).lineWidth(0.5).stroke();
+      doc.fontSize(9).fillColor(CINZA)
+        .text('Relatório de Avaliação Neuropsicopedagógica · Patrízia Almeida Santarém Costa', 85, 20, { align: 'center' });
+      doc.moveTo(85, 35).lineTo(510, 35).strokeColor(VERDE).lineWidth(0.5).stroke();
     });
 
     const lines = contentMd.split('\n');
@@ -624,74 +625,74 @@ async function gerarPdfDeMarkdown(contentMd, patientName, version) {
       // H1
       if (trimmed.startsWith('# ')) {
         const text = trimmed.slice(2).replace(/\*\*/g, '');
-        doc.fontSize(16).font('Helvetica-Bold').fillColor(VERDE)
-          .text(text, { align: 'center' });
+        doc.fontSize(14).font('Helvetica-Bold').fillColor(VERDE)
+          .text(text.toUpperCase(), { align: 'center' });
         doc.moveDown(0.5);
       }
       // H2
       else if (trimmed.startsWith('## ')) {
         const text = trimmed.slice(3).replace(/\*\*/g, '');
         doc.moveDown(0.3);
-        doc.moveTo(70, doc.y).lineTo(525, doc.y).strokeColor(VERDE).lineWidth(0.5).stroke();
+        doc.moveTo(85, doc.y).lineTo(510, doc.y).strokeColor(VERDE).lineWidth(0.5).stroke();
         doc.moveDown(0.2);
-        doc.fontSize(13).font('Helvetica-Bold').fillColor(VERDE).text(text.toUpperCase());
-        doc.moveDown(0.3);
+        doc.fontSize(12).font('Helvetica-Bold').fillColor(VERDE).text(text.toUpperCase());
+        doc.moveDown(0.6);
       }
       // H3
       else if (trimmed.startsWith('### ')) {
         const text = trimmed.slice(4).replace(/\*\*/g, '');
-        doc.fontSize(11).font('Helvetica-Bold').fillColor(TEXTO).text(text);
-        doc.moveDown(0.2);
+        doc.fontSize(12).font('Helvetica-BoldOblique').fillColor(TEXTO).text(text);
+        doc.moveDown(0.4);
       }
       // Separador ---
       else if (trimmed.match(/^---+$/)) {
         doc.moveDown(0.3);
-        doc.moveTo(70, doc.y).lineTo(525, doc.y).strokeColor('#E5E2DC').lineWidth(0.5).stroke();
+        doc.moveTo(85, doc.y).lineTo(510, doc.y).strokeColor('#E5E2DC').lineWidth(0.5).stroke();
         doc.moveDown(0.3);
       }
       // Lista
       else if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
         const text = trimmed.slice(2).replace(/\*\*(.+?)\*\*/g, '$1');
-        doc.fontSize(10).font('Helvetica').fillColor(TEXTO)
-          .text('• ' + text, { indent: 15 });
+        doc.fontSize(12).font('Helvetica').fillColor(TEXTO)
+          .text('• ' + text, { indent: 20 });
       }
       // Linha de tabela
       else if (trimmed.startsWith('|')) {
         if (trimmed.match(/^\|[-:\s|]+\|$/)) continue; // separador
         const cells = trimmed.split('|').filter(c => c.trim()).map(c => c.trim().replace(/\*\*/g, ''));
         if (cells.length > 0) {
-          const colW = Math.floor(455 / cells.length);
-          let x = 70;
+          const colW = Math.floor(440 / cells.length);
+          let x = 85;
           const isHeader = !lines[lines.indexOf(line) + 1] || lines[lines.indexOf(line) + 1].match(/^\|[-:\s|]+\|$/);
           cells.forEach(cell => {
-            doc.rect(x, doc.y, colW, 18).strokeColor('#D5D2CC').lineWidth(0.3).stroke();
-            if (isHeader) doc.rect(x, doc.y, colW, 18).fillColor(VERDE).fill();
-            doc.fontSize(8).font(isHeader ? 'Helvetica-Bold' : 'Helvetica')
+            doc.rect(x, doc.y, colW, 22).strokeColor('#D5D2CC').lineWidth(0.3).stroke();
+            if (isHeader) doc.rect(x, doc.y, colW, 22).fillColor(VERDE).fill();
+            doc.fontSize(10).font(isHeader ? 'Helvetica-Bold' : 'Helvetica')
               .fillColor(isHeader ? '#FFFFFF' : TEXTO)
-              .text(cell, x + 3, doc.y + 4, { width: colW - 6, height: 14, ellipsis: true });
+              .text(cell, x + 3, doc.y + 4, { width: colW - 6, height: 18, ellipsis: true });
             x += colW;
           });
-          doc.moveDown(1.2);
+          doc.moveDown(1.4);
         }
       }
       // Negrito standalone (subtítulo)
       else if (trimmed.match(/^\*\*[^*]+\*\*$/)) {
         const text = trimmed.replace(/\*\*/g, '');
-        doc.fontSize(10).font('Helvetica-Bold').fillColor(TEXTO).text(text);
-        doc.moveDown(0.1);
+        doc.fontSize(12).font('Helvetica-Bold').fillColor(TEXTO).text(text);
+        doc.moveDown(0.3);
       }
       // Parágrafo normal
       else {
         const text = trimmed.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
-        doc.fontSize(10).font('Helvetica').fillColor(TEXTO)
-          .text(text, { align: 'justify' });
-        doc.moveDown(0.2);
+        doc.fontSize(12).font('Helvetica').fillColor(TEXTO)
+          .text(text, { align: 'justify', indent: 35 });
+        doc.moveDown(0.8);
       }
     }
 
     // Footer
-    doc.fontSize(8).fillColor(CINZA)
-      .text('Neuropsicopedagoga Clínica · Uberlândia, MG', 70, doc.page.height - 40, { align: 'center' });
+    doc.fontSize(9).fillColor(CINZA)
+      .text('Neuropsicopedagoga Clínica · Uberlândia, MG', 85, doc.page.height - 40, { align: 'center' });
 
     doc.end();
   });
