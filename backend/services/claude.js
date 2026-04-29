@@ -345,6 +345,9 @@ ${libraryStr}
 
 Seções obrigatórias: Cabeçalho, Queixa Principal, Anamnese, Resumo Escolar, Visita Escolar, Avaliação Neuropsicopedagógica, Análise dos Instrumentos, Conclusão Integrada, Quadro Síntese, Orientações, Encaminhamentos, Considerações Finais.
 
+## VALIDAÇÃO ESTRUTURAL DE ABERTURA
+Verifique as primeiras linhas não-vazias do RAN. Se o RAN não iniciar com um heading Markdown (linha começando com \`#\`), ou se houver qualquer texto antes do primeiro \`#\`: subtraia 15 pontos do score e registre em alertas: 'abertura_invalida — RAN contém preâmbulo antes do primeiro heading'.
+
 aprovado=true se score >= 20. Responda APENAS com JSON válido.`;
 
   // Envia RAN COMPLETO + dossiê resumido — sem truncamento do RAN

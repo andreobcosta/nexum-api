@@ -66,6 +66,8 @@ Os PDFs de testes podem vir em diferentes formatos (preenchidos digitalmente, es
 
 O relatório deve seguir **exatamente** esta estrutura, nesta ordem:
 
+> **REGRA DE OUTPUT:** Inicie seu output **diretamente** com a primeira linha do relatório (o heading do Cabeçalho). Não escreva nenhum texto introdutório, saudação, confirmação ou preâmbulo antes do relatório. A primeira linha gerada deve ser o título `# RAN - RELATÓRIO DE AVALIAÇÃO NEUROPSICOPEDAGÓGICA`.
+
 ### SEÇÃO 1 — Cabeçalho
 ```
 RAN - RELATÓRIO DE AVALIAÇÃO NEUROPSICOPEDAGÓGICA
@@ -441,4 +443,5 @@ Antes de finalizar o relatório, verifique:
 - [ ] Lacunas de dados estão sinalizadas com `[DADO NÃO FORNECIDO]`?
 - [ ] O tom é formal-técnico, acessível, equilibrado entre prejuízos e potencialidades?
 - [ ] O nome da criança é usado consistentemente (não só "o paciente")?
+- [ ] O output inicia diretamente com o heading do Cabeçalho? Nenhum preâmbulo, confirmação ou texto antes da primeira linha?
 - [ ] A data e local de assinatura estão preenchidos?

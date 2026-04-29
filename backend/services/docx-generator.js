@@ -163,12 +163,17 @@ function parsearTabela(linhas) {
 }
 
 function cellaParaRuns(cellText, bold, color) {
-  const partes = cellText.replace(/\*\*/g, '').split(/<br\s*\/?>/gi);
-  return partes.map((texto, idx) => {
-    const run = { text: texto.trim(), bold, color, size: 18, font: 'Arial' };
-    if (idx > 0) run.break = 1;
-    return new TextRun(run);
+  const segments = [];
+  cellText.split(/<br\s*\/?>/gi).forEach((linha, idx) => {
+    if (idx > 0) segments.push({ text: '', break: 1, bold: false, color, size: 18, font: 'Arial' });
+    linha.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean).forEach(p => {
+      const isBold = p.startsWith('**') && p.endsWith('**');
+      const isItalic = !isBold && p.startsWith('*') && p.endsWith('*');
+      const txt = isBold ? p.slice(2,-2) : isItalic ? p.slice(1,-1) : p;
+      segments.push({ text: txt.trim(), bold: bold || isBold, italics: isItalic, color, size: 18, font: 'Arial' });
+    });
   });
+  return segments.map(s => new TextRun(s));
 }
 
 function gerarTabela(rows) {
@@ -652,9 +657,18 @@ async function gerarPdfDeMarkdown(contentMd, patientName, version) {
       }
       // Lista
       else if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
-        const text = trimmed.slice(2).replace(/\*\*(.+?)\*\*/g, '$1');
-        doc.fontSize(12).font('Helvetica').fillColor(TEXTO)
-          .text('• ' + text, { indent: 20 });
+        const partes = trimmed.slice(2).split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+        let primeiro = true;
+        for (let pi = 0; pi < partes.length; pi++) {
+          const p = partes[pi];
+          const isBold = p.startsWith('**') && p.endsWith('**');
+          const isItalic = !isBold && p.startsWith('*') && p.endsWith('*');
+          const txt = isBold ? p.slice(2,-2) : isItalic ? p.slice(1,-1) : p;
+          const isLast = pi === partes.length - 1;
+          doc.fontSize(12).font(isBold ? 'Helvetica-Bold' : isItalic ? 'Helvetica-Oblique' : 'Helvetica').fillColor(TEXTO)
+            .text(primeiro ? '• ' + txt : txt, primeiro ? { indent: 20, continued: !isLast } : { continued: !isLast });
+          primeiro = false;
+        }
       }
       // Linha de tabela
       else if (trimmed.startsWith('|')) {
@@ -683,9 +697,18 @@ async function gerarPdfDeMarkdown(contentMd, patientName, version) {
       }
       // Parágrafo normal
       else {
-        const text = trimmed.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
-        doc.fontSize(12).font('Helvetica').fillColor(TEXTO)
-          .text(text, { align: 'justify', indent: 35 });
+        const partes = trimmed.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+        let primeiro = true;
+        for (let pi = 0; pi < partes.length; pi++) {
+          const p = partes[pi];
+          const isBold = p.startsWith('**') && p.endsWith('**');
+          const isItalic = !isBold && p.startsWith('*') && p.endsWith('*');
+          const txt = isBold ? p.slice(2,-2) : isItalic ? p.slice(1,-1) : p;
+          const isLast = pi === partes.length - 1;
+          doc.fontSize(12).font(isBold ? 'Helvetica-Bold' : isItalic ? 'Helvetica-Oblique' : 'Helvetica').fillColor(TEXTO)
+            .text(txt, primeiro ? { align: 'justify', indent: 35, continued: !isLast } : { continued: !isLast });
+          primeiro = false;
+        }
         doc.moveDown(0.8);
       }
     }
