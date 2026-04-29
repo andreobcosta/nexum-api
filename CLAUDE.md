@@ -46,7 +46,7 @@ Sem linter ou framework de testes configurado.
 | Deploy frontend | Vercel (mesmo repositório GitHub) |
 | CI/CD | Cloud Build — push ao main → health check + rollback automático |
 | Memory / Timeout | 512Mi / 900s (corrigido em A3) |
-| Commit estável | bec528a / C2 — prompt por instrumento |
+| Commit estável | e4b24f4 / B1+B2+B3 — remover bloco, toolbar Quill, upload auth |
 
 **Nunca** editar código diretamente no Cloud Run. Alterações chegam via git push → Cloud Build.
 
@@ -553,3 +553,48 @@ Sempre responda em português brasileiro em todas as interações, explicações
   - `feat: adicionar progresso SSE na geração de RAN`
   - `fix: corrigir lock pipeline_ativo no Firestore`
   - `refactor: substituir Identificador pelo Compressor`
+
+---
+
+## Smoke Test Pós-Deploy
+
+Executar após cada push para main que afete frontend ou backend crítico.
+Tempo estimado: 5 minutos.
+
+### Auth
+- [ ] Acessar app.patriziasantarem.com sem token → redireciona para Google login
+- [ ] Login com conta autorizada → redireciona para lista de pacientes
+
+### Pacientes
+- [ ] Lista de pacientes carrega
+- [ ] Abrir detalhe de um paciente
+- [ ] Botão Voltar retorna para lista
+
+### Upload
+- [ ] Enviar um arquivo PDF → sem erro "Não autenticado"
+- [ ] Arquivo aparece na lista após upload
+
+### Geração de RAN
+- [ ] Iniciar geração → progresso aparece
+- [ ] RAN gerado aparece na lista de relatórios
+
+### ReportPage
+- [ ] Abrir um RAN → blocos renderizam corretamente
+- [ ] Editar um bloco → toolbar Quill aparece UMA vez
+- [ ] Salvar bloco → toast "Bloco salvo"
+- [ ] Botão 🗑 remove bloco com confirmação
+- [ ] Botão Voltar retorna para detalhe do paciente
+- [ ] Download DOCX → arquivo baixa sem erro
+- [ ] Download PDF → arquivo baixa sem erro
+- [ ] Botões ✓ ✗ ✎ funcionam por bloco
+- [ ] Banner "X blocos editados" aparece após salvar
+- [ ] Painel de revisão abre e envia feedbacks
+
+### Settings
+- [ ] Acessar Configurações via ⚙️
+- [ ] Salvar fonte e tamanho → toast sucesso
+
+### Admin
+- [ ] Acessar Admin via Settings → Administração do sistema
+- [ ] Aba Prompt carrega system prompt ativo
+- [ ] Aba Log carrega activity log
