@@ -26,6 +26,7 @@ const IMAGE_MIME_TYPES = [
 
 // Verifica se o arquivo precisa de extração via vision
 function needsVisionExtraction(mimeType) {
+  if (mimeType === 'image' || mimeType?.startsWith('image/')) return true;
   return PDF_MIME_TYPES.includes(mimeType) || IMAGE_MIME_TYPES.includes(mimeType);
 }
 
@@ -243,10 +244,11 @@ async function processDataPackage(rawDataPackage) {
 
         // Caso 4: PDF ou imagem — extrai via Claude vision
         if (file.content && needsVisionExtraction(file.type)) {
-          console.log(`[PDF-Extractor] Extraindo: ${file.name} (${file.type})`);
+          const mediaType = (file.type === 'image') ? 'image/jpeg' : file.type;
+          console.log(`[PDF-Extractor] Extraindo: ${file.name} (${mediaType})`);
           // Delay entre extrações para respeitar rate limit da API
           await new Promise(r => setTimeout(r, 3000));
-          const result = await extractTextFromFile(file.content, file.type, file.name);
+          const result = await extractTextFromFile(file.content, mediaType, file.name);
 
           if (result && result.text && result.text.trim()) {
             const entry = {
