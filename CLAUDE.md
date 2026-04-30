@@ -335,6 +335,9 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] P1 ✓: editor Quill WYSIWYG — parseMarkdownToHtml/parseHtmlToMarkdown (9821c6e)
 - [x] P2 ✓: botão "+ Adicionar seção" — id Date.now(), abre em edição imediato (9821c6e)
 
+### Sprint H — Infraestrutura Crítica (PRÓXIMA — antes de novas features)
+- [ ] H3: Migrar autenticação Drive de OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) para Google Service Account com Domain-Wide Delegation — elimina risco de expiração e indisponibilidade total
+
 ### Sprint 4 — Aprendizado Contínuo (após Sprint 3 com feedbacks acumulados)
 - [ ] G1-G5 ~: Firestore Vector Search + Motor de Feedback Haiku + RAG + Busca Externa
 
@@ -507,6 +510,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | `system_prompt_ran.md` tem REGRA DE OUTPUT no início da seção 3 | Redator deve iniciar output diretamente com `# RAN...` — nunca adicionar texto, saudação ou preâmbulo antes da Seção 1 |
 | Revisor penaliza -15pts se RAN não abre com `#` | campo `alertas` recebe `'abertura_invalida'` — score_zero não dispara, apenas penaliza |
 | PDF bold inline: split regex + `{continued:true}` alternando fontes | não usar `replace(/\*\*/g,'')` simples — perde bold; implementado em parágrafos e listas do pdfkit |
+| `GOOGLE_REFRESH_TOKEN` expira a cada 6 meses de inatividade | solução definitiva é Service Account (H3) — não usar OAuth2 pessoal em novo código Drive |
 
 ### Bugs Corrigidos — Não Reintroduzir
 
@@ -526,6 +530,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 - **Sem testes automatizados** — validação por uso clínico real (Princípio do Feedback)
 - **Sem ambiente de staging** — apenas produção (Cloud Run) e local (`docker-compose`)
 - **`gerarDocxDeHtml` multi-tenant** — dívida técnica: usa `_fonte`/`_tamanho` da última geração via estado de módulo; precisa de refactor para Fase 4 (multi-tenant)
+- **H3 — Service Account pendente** — CRÍTICO: OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) expira e causa indisponibilidade total do Drive. Migrar para Google Service Account com Domain-Wide Delegation ou compartilhamento direto da pasta raiz. Prioridade: próxima sprint antes de qualquer nova feature.
 
 ---
 
