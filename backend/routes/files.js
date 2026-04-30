@@ -8,6 +8,7 @@ const { getDb } = require('../db/firestore');
 const { FieldValue } = require('@google-cloud/firestore');
 const drive = require('../services/drive');
 const { transcribeAudio } = require('../services/transcription');
+const { extractTextFromFile } = require('../services/pdf-extractor');
 
 const upload = multer({
   dest: path.join(__dirname, '..', 'temp'),
@@ -54,6 +55,29 @@ async function transcribeInBackground(patient_id, fileId, driveFileId, subfolder
   } finally {
     if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
     if (bgPath && fs.existsSync(bgPath)) fs.unlinkSync(bgPath); // cleanup do arquivo _bg
+  }
+}
+
+async function scoreImageInBackground(patient_id, fileId, driveFileId, originalName) {
+  const db = getDb();
+  const fileRef = db.collection('patients').doc(patient_id).collection('files').doc(fileId);
+  try {
+    console.log('[SCORE-LEGIBILIDADE] Iniciando para', originalName);
+    const buffer = await drive.downloadFile(driveFileId);
+    const base64 = buffer.toString('base64');
+    const result = await extractTextFromFile(base64, 'image/jpeg', originalName);
+    if (!result || !result.text) {
+      await fileRef.update({ legibility_score: 0, legibility_label: 'baixa' });
+      return;
+    }
+    const ilegCount = (result.text.match(/\[ILEGÍVEL\]/g) || []).length;
+    const ilegRatio = result.text.length > 0 ? (ilegCount * 10) / result.text.length : 1;
+    const score = Math.round(Math.max(0, Math.min(100, 100 - ilegRatio * 500)));
+    const label = score >= 70 ? 'boa' : score >= 40 ? 'parcial' : 'baixa';
+    await fileRef.update({ legibility_score: score, legibility_label: label });
+    console.log('[SCORE-LEGIBILIDADE] ' + originalName + ' — score:' + score + ' (' + label + ')');
+  } catch (err) {
+    console.warn('[SCORE-LEGIBILIDADE] Erro para', originalName, ':', err.message);
   }
 }
 
@@ -110,6 +134,12 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
           fs.copyFileSync(file.path, bgPath);
           transcribeInBackground(patient_id, fileId, driveFile.id, subfolderId, file.originalname, file.mimetype, bgPath)
             .catch(e => console.error('[AUTO-TRANSCRIÇÃO] Falha silenciosa:', e.message));
+        }
+
+        // Score de legibilidade em background para imagens
+        if (isImage) {
+          scoreImageInBackground(patient_id, fileId, driveFile.id, file.originalname)
+            .catch(e => console.warn('[SCORE-LEGIBILIDADE] Falha silenciosa:', e.message));
         }
 
       } catch (fileErr) {
