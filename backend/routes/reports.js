@@ -88,6 +88,51 @@ router.post('/generate/:patient_id', async (req, res) => {
           console.warn('[Reports] Erro ao coletar Drive:', driveErr.message);
         }
 
+        // BUG 1: arquivos que não encontraram match por nome (encoding NFD vs NFC) ficam como
+        // firestore_pending — baixa direto via drive_file_id que é imune a variante de encoding
+        const pendingDownloads = [];
+        for (const folder in dataPackage) {
+          for (const f of dataPackage[folder]) {
+            if (f.source === 'firestore_pending' && f.drive_file_id) pendingDownloads.push({ folder, file: f });
+          }
+        }
+        if (pendingDownloads.length > 0) {
+          console.log(`[Reports] BUG1 — ${pendingDownloads.length} arquivo(s) sem match de nome — baixando via drive_file_id`);
+          await Promise.all(pendingDownloads.map(async ({ file }) => {
+            try {
+              const buffer = await drive.downloadFile(file.drive_file_id);
+              file.content = buffer.toString('base64');
+              file.source = 'drive_filled_direct';
+              filesLog.push(file.name + ' (conteúdo Drive carregado via drive_file_id)');
+            } catch (e) {
+              console.warn('[Reports] Falha download direto:', file.name, e.message);
+            }
+          }));
+        }
+
+        // BUG 2: mesmo arquivo pode aparecer duas vezes quando Firestore tem encoding
+        // diferente do Drive (NFC vs NFD) — deduplicar por nome normalizado por pasta
+        for (const folder in dataPackage) {
+          const nomesVistos = new Set();
+          dataPackage[folder] = dataPackage[folder].filter(f => {
+            const chave = f.name.normalize('NFC').toLowerCase().trim();
+            if (nomesVistos.has(chave)) return false;
+            nomesVistos.add(chave);
+            return true;
+          });
+        }
+
+        // BUG 3: arquivos drive_only incluem ruído — whitelist de extensões clínicas
+        // conhecidas descarta automaticamente .tmp, .bak, arquivos sem extensão, etc.
+        const CLINICAL_EXT = ['.docx', '.pdf', '.jpg', '.jpeg', '.png', '.mp3', '.mp4', '.m4a', '.ogg', '.wav'];
+        for (const folder in dataPackage) {
+          dataPackage[folder] = dataPackage[folder].filter(f => {
+            if (f.source !== 'drive_only') return true;
+            const nameLower = f.name.toLowerCase();
+            return CLINICAL_EXT.some(e => nameLower.endsWith(e));
+          });
+        }
+
         const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
         const comConteudo = Object.values(dataPackage).reduce((sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0);
         console.log(`[Reports] Arquivos coletados (${totalFiles} total, ${comConteudo} com conteúdo):`, filesLog.join(' | '));
