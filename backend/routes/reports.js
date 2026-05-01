@@ -110,6 +110,17 @@ router.post('/generate/:patient_id', async (req, res) => {
           }));
         }
 
+        // BUG 3b: pastas não-padrão do Drive (ex: "LAURA") não são clínicas — remover seus
+        // arquivos drive_only; manter apenas se tiverem entrada no Firestore
+        const validFolders = new Set(Object.values(drive.CATEGORY_TO_FOLDER));
+        for (const folder of Object.keys(dataPackage)) {
+          if (!validFolders.has(folder)) {
+            dataPackage[folder] = dataPackage[folder].filter(f => f.source !== 'drive_only');
+            if (dataPackage[folder].length === 0) delete dataPackage[folder];
+          }
+        }
+
+        // dataPackage finalizado — BUG 2 e BUG 3 rodam após BUG 3b para operar sobre dados limpos
         // BUG 2: mesmo arquivo pode aparecer duas vezes quando Firestore tem encoding
         // diferente do Drive (NFC vs NFD) — deduplicar por nome normalizado por pasta
         for (const folder in dataPackage) {
@@ -133,15 +144,7 @@ router.post('/generate/:patient_id', async (req, res) => {
           });
         }
 
-        // BUG 3b: pastas não-padrão do Drive (ex: "LAURA") não são clínicas — remover seus
-        // arquivos drive_only; manter apenas se tiverem entrada no Firestore
-        const validFolders = new Set(Object.values(drive.CATEGORY_TO_FOLDER));
-        for (const folder of Object.keys(dataPackage)) {
-          if (!validFolders.has(folder)) {
-            dataPackage[folder] = dataPackage[folder].filter(f => f.source !== 'drive_only');
-            if (dataPackage[folder].length === 0) delete dataPackage[folder];
-          }
-        }
+        console.log('[FILTROS] Após dedup:', Object.entries(dataPackage).map(([k, v]) => k + ':' + v.length).join(', '));
 
         const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
         const comConteudo = Object.values(dataPackage).reduce((sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0);
