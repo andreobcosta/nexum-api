@@ -66,7 +66,7 @@ function calcCost(model, inputTokens, outputTokens) {
 
 async function callClaude(systemPrompt, userMessage, maxTokens = 16000, model = MODEL_SONNET, tentativa = 1) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120000);
+  const timer = setTimeout(() => controller.abort(), 1500000);
   try {
     const res = await fetch(ANTHROPIC_API_URL, {
       method: 'POST',

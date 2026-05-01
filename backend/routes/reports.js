@@ -122,15 +122,25 @@ router.post('/generate/:patient_id', async (req, res) => {
           });
         }
 
-        // BUG 3: arquivos drive_only incluem ruído — whitelist de extensões clínicas
-        // conhecidas descarta automaticamente .tmp, .bak, arquivos sem extensão, etc.
+        // BUG 3: whitelist de extensões clínicas — aplica a drive_only, drive_filled e drive_filled_direct
+        // (firestore_transcription e firestore_pending têm dados clínicos garantidos pelo Firestore)
         const CLINICAL_EXT = ['.docx', '.pdf', '.jpg', '.jpeg', '.png', '.mp3', '.mp4', '.m4a', '.ogg', '.wav'];
         for (const folder in dataPackage) {
           dataPackage[folder] = dataPackage[folder].filter(f => {
-            if (f.source !== 'drive_only') return true;
+            if (f.source === 'firestore_transcription' || f.source === 'firestore_pending') return true;
             const nameLower = f.name.toLowerCase();
             return CLINICAL_EXT.some(e => nameLower.endsWith(e));
           });
+        }
+
+        // BUG 3b: pastas não-padrão do Drive (ex: "LAURA") não são clínicas — remover seus
+        // arquivos drive_only; manter apenas se tiverem entrada no Firestore
+        const validFolders = new Set(Object.values(drive.CATEGORY_TO_FOLDER));
+        for (const folder of Object.keys(dataPackage)) {
+          if (!validFolders.has(folder)) {
+            dataPackage[folder] = dataPackage[folder].filter(f => f.source !== 'drive_only');
+            if (dataPackage[folder].length === 0) delete dataPackage[folder];
+          }
         }
 
         const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
