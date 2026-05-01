@@ -15,6 +15,10 @@ if (process.env.NODE_ENV !== 'production') { require('dotenv').config({ path: '/
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Cloud Run senta atrás de load balancer — necessário para express-rate-limit
+// reconhecer IPs reais via X-Forwarded-For sem lançar ValidationError
+app.set('trust proxy', 1);
+
 const { verifyAuth } = require('./middleware/verifyAuth');
 const { getDb } = require('./db/firestore');
 const rateLimit = require('express-rate-limit');
