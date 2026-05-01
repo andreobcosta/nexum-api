@@ -84,9 +84,9 @@ function tituloPrincipal(texto) {
 }
 
 function tituloSecao(texto) {
-  // Limpa o Markdown do título: remove **, #, etc.
   const limpo = texto.replace(/\*\*/g, '').replace(/^#+\s*/, '').trim();
   return new Paragraph({
+    heading: HeadingLevel.HEADING_1,
     spacing: { before: 280, after: 80 },
     border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: VERDE, space: 4 } },
     children: [new TextRun({
@@ -99,6 +99,7 @@ function tituloSecao(texto) {
 function subTitulo(texto) {
   const limpo = texto.replace(/\*\*/g, '').replace(/^#+\s*/, '').trim();
   return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
     spacing: { before: 160, after: 40 },
     children: [new TextRun({
       text: limpo, bold: true, size: 20,
@@ -107,8 +108,20 @@ function subTitulo(texto) {
   });
 }
 
+function subSubTitulo(texto) {
+  const limpo = texto.replace(/\*\*/g, '').replace(/^#+\s*/, '').trim();
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_3,
+    spacing: { before: 100, after: 30 },
+    children: [new TextRun({
+      text: limpo, bold: true, italics: true, size: 20,
+      color: '2C3828', font: 'Arial'
+    })]
+  });
+}
+
 function parágrafoTexto(texto, opcoes = {}) {
-  // Processa inline: **bold** e *italic*
+  texto = texto.replace(/\n(?!\n)/g, ' ').trim();
   const runs = processarInline(texto, opcoes);
   return new Paragraph({
     spacing: { before: 40, after: 40 },
@@ -192,7 +205,6 @@ function gerarTabela(rows) {
         children: cells.map((cellText, colIdx) =>
           new TableCell({
             borders,
-            width: { size: colWidths[colIdx], type: WidthType.DXA },
             margins: { top: 80, bottom: 80, left: 120, right: 120 },
             shading: rowIdx === 0
               ? { fill: VERDE, type: ShadingType.CLEAR }
@@ -269,10 +281,19 @@ function parsearMarkdown(md) {
         i++;
       }
       const rows = parsearTabela(blocoTabela);
-      const tabela = gerarTabela(rows);
-      if (tabela) {
-        elementos.push(tabela);
-        elementos.push(paragrafoVazio(60));
+      if (rows.length) {
+        // B18: coluna única → parágrafos de largura total em vez de tabela estreita
+        if (rows[0].length === 1) {
+          for (const row of rows) {
+            if (row[0]) elementos.push(parágrafoTexto(row[0]));
+          }
+        } else {
+          const tabela = gerarTabela(rows);
+          if (tabela) {
+            elementos.push(tabela);
+            elementos.push(paragrafoVazio(60));
+          }
+        }
       }
       continue;
     }
@@ -299,6 +320,13 @@ function parsearMarkdown(md) {
     // H2 — seções principais
     if (linha.startsWith('## ')) {
       elementos.push(tituloSecao(linha.slice(3)));
+      i++;
+      continue;
+    }
+
+    // H4 — subseções de terceiro nível (deve vir antes de H3)
+    if (linha.startsWith('#### ')) {
+      elementos.push(subSubTitulo(linha.slice(5)));
       i++;
       continue;
     }
@@ -331,9 +359,22 @@ function parsearMarkdown(md) {
       continue;
     }
 
-    // Parágrafo normal
+    // B16: coletar linhas consecutivas de texto para evitar frases partidas
     if (linha.trim()) {
-      elementos.push(parágrafoTexto(linha));
+      const textoLinhas = [];
+      while (i < linhas.length && linhas[i].trim() &&
+             !linhas[i].startsWith('#') &&
+             !linhas[i].startsWith('- ') &&
+             !linhas[i].startsWith('• ') &&
+             !linhas[i].startsWith('|') &&
+             !linhas[i].match(/^---+$/) &&
+             !linhas[i].match(/^\*\*[^*]+\*\*\s*$/)) {
+        textoLinhas.push(linhas[i].trim());
+        i++;
+      }
+      const texto = textoLinhas.join(' ').trim();
+      if (texto) elementos.push(parágrafoTexto(texto));
+      continue;
     }
     i++;
   }
