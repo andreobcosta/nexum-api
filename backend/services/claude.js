@@ -115,6 +115,10 @@ function buildAnalyticsInput(patientInfo, processedData) {
       // Prioridade: transcription (áudio) > content (PDF/imagem extraída) > vazio
       const textContent = file.transcription || file.content;
 
+      console.log('[EXTRACAO]', file.name, '(' + folderName + ')',
+        '→', textContent ? textContent.substring(0, 100) : 'VAZIO',
+        '| source:', file.source);
+
       if (textContent && String(textContent).trim()) {
         sections.push('\n### Arquivo: ' + file.name);
 
