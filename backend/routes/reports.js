@@ -451,21 +451,32 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     const reportId = uuidv4();
     const now = new Date().toISOString();
 
-    const reportFileName = 'RAN_' + patient.full_name.replace(/\s+/g, '_') + '_v' + version + '_' + now.slice(0, 10) + '.md';
+    const reportFileName = 'RAN_' + patient.full_name.replace(/\s+/g, '_') + '_v' + version + '_' + now.slice(0, 10);
     let driveFileId = null;
+    let driveIsGoogleDoc = false;
 
     try {
       const subfolderId = await require('../services/drive').getSubfolderId(patient.drive_folder_id, 'relatorio');
-      const reportBuffer = Buffer.from(reportContent, 'utf-8');
-      const driveFile = await require('../services/drive').uploadBuffer(reportBuffer, reportFileName, 'text/markdown', subfolderId);
+      const driveFile = await require('../services/drive').uploadAsGoogleDoc(reportContent, reportFileName, subfolderId, 'text/markdown');
       driveFileId = driveFile.id;
+      driveIsGoogleDoc = true;
+      console.log('[Reports] Google Doc criado no Drive (update):', driveFile.name, '—', driveFile.webViewLink);
     } catch (uploadErr) {
-      console.warn('Could not upload to Drive:', uploadErr.message);
+      console.warn('[Reports] Erro ao criar Google Doc (update) — tentando .md:', uploadErr.message);
+      try {
+        const subfolderId = await require('../services/drive').getSubfolderId(patient.drive_folder_id, 'relatorio');
+        const reportBuffer = Buffer.from(reportContent, 'utf-8');
+        const driveFile = await require('../services/drive').uploadBuffer(reportBuffer, reportFileName + '.md', 'text/markdown', subfolderId);
+        driveFileId = driveFile.id;
+      } catch (fallbackErr) {
+        console.warn('[Reports] Fallback .md também falhou (update):', fallbackErr.message);
+      }
     }
 
     await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(reportId).set({
       patient_id: req.params.patient_id, version,
-      drive_file_id: driveFileId, content_md: reportContent,
+      drive_file_id: driveFileId, drive_is_google_doc: driveIsGoogleDoc,
+      content_md: reportContent,
       ran_meta: JSON.stringify(ranMeta),
       status: 'draft', generated_at: now, reviewed_at: null,
       updated_from_version: reportExistente.version,
