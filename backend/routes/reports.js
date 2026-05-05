@@ -21,7 +21,8 @@ router.post('/generate/:patient_id', async (req, res) => {
           ? pd.pipeline_iniciado_em.toDate()
           : new Date(pd.pipeline_iniciado_em);
         if (Date.now() - iniciado.getTime() > TIMEOUT_MS) {
-          const jobsSnap = await pacienteRef.collection('jobs')
+          const jobsSnap = await db.collection('jobs')
+            .where('patient_id', '==', req.params.patient_id)
             .where('status', '==', 'processando').get();
           const batch = db.batch();
           jobsSnap.forEach(d => batch.update(d.ref, { status: 'failed', error: 'Timeout automático' }));
@@ -389,7 +390,8 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
           ? pd.pipeline_iniciado_em.toDate()
           : new Date(pd.pipeline_iniciado_em);
         if (Date.now() - iniciado.getTime() > TIMEOUT_MS) {
-          const jobsSnap = await pacienteRef.collection('jobs')
+          const jobsSnap = await db.collection('jobs')
+            .where('patient_id', '==', req.params.patient_id)
             .where('status', '==', 'processando').get();
           const batch = db.batch();
           jobsSnap.forEach(d => batch.update(d.ref, { status: 'failed', error: 'Timeout automático' }));
