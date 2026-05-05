@@ -514,16 +514,25 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
 
     let buffer;
 
-    // Tenta exportar via Drive (Google Doc nativo — melhor qualidade)
+    // Gera buffer DOCX para conversão fiel via LibreOffice
+    let docxBuffer = null;
+    try {
+      const { gerarDocx } = require('../services/docx-generator');
+      docxBuffer = await gerarDocx(report.content_md || '', nomeBase, null);
+    } catch (docxErr) {
+      console.error('[PDF] Falha ao gerar DOCX para LibreOffice:', docxErr.message);
+    }
+
+    // Tenta exportar via LibreOffice (se DOCX disponível) ou Drive
     if (report.drive_file_id) {
       try {
         const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
         if (isDoc) {
-          console.log('[PDF] Exportando Google Doc como PDF');
-          buffer = await drive.exportAsPdf(report.drive_file_id);
+          console.log('[PDF] Exportando via LibreOffice (docxBuffer disponível:', !!docxBuffer, ')');
+          buffer = await drive.exportAsPdf(report.drive_file_id, docxBuffer);
         }
       } catch (driveErr) {
-        console.error('[PDF] Falha Drive export — file_id:', report.drive_file_id, '| erro:', driveErr.message, '| stack:', driveErr.stack);
+        console.error('[PDF] Falha Drive/LibreOffice export — file_id:', report.drive_file_id, '| erro:', driveErr.message, '| stack:', driveErr.stack);
       }
     }
 

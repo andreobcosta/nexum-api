@@ -1,5 +1,9 @@
 const { google } = require('googleapis');
 require('dotenv').config({path: '/app/backend/.env'});
+const { execFile } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const FOLDER_STRUCTURE = [
   '01 - Anamnese',
@@ -152,7 +156,35 @@ async function exportAsDocx(fileId) {
 }
 
 // Exporta Google Doc como PDF
-async function exportAsPdf(fileId) {
+async function exportAsPdf(fileId, docxBuffer = null) {
+  // Se receber buffer DOCX, converte localmente via LibreOffice (mais fiel)
+  if (docxBuffer) {
+    return new Promise((resolve, reject) => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexum-pdf-'));
+      const docxPath = path.join(tmpDir, 'report.docx');
+      const pdfPath = path.join(tmpDir, 'report.pdf');
+      try {
+        fs.writeFileSync(docxPath, docxBuffer);
+        execFile('libreoffice', [
+          '--headless', '--convert-to', 'pdf',
+          '--outdir', tmpDir, docxPath
+        ], { timeout: 60000 }, (err) => {
+          if (err) {
+            // fallback: usar Drive export se LibreOffice falhar
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+            return exportAsPdf(fileId).then(resolve).catch(reject);
+          }
+          const buf = fs.readFileSync(pdfPath);
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+          resolve(buf);
+        });
+      } catch (e) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+        reject(e);
+      }
+    });
+  }
+  // Fallback sem buffer: comportamento anterior via Drive
   const drive = getDrive();
   const res = await drive.files.export(
     { fileId, mimeType: 'application/pdf' },

@@ -4,7 +4,6 @@ steps:
     id: 'build'
     args:
       - 'build'
-      - '--no-cache'
       - '-t'
       - 'gcr.io/nexum-production/nexum-api:$COMMIT_SHA'
       - '-t'
@@ -113,4 +112,4 @@ options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
 
-timeout: '600s'
+timeout: '1800s'
