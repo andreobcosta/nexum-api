@@ -1,9 +1,5 @@
 const { google } = require('googleapis');
 require('dotenv').config({path: '/app/backend/.env'});
-const { execFile } = require('child_process');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 
 const FOLDER_STRUCTURE = [
   '01 - Anamnese',
