@@ -301,6 +301,11 @@ async function collectPatientData(patientFolderId) {
   return allData;
 }
 
+async function deleteFile(fileId) {
+  const drive = getDrive();
+  await drive.files.delete({ fileId });
+}
+
 // ── EXPORTS — todas as funções definidas acima ──
 module.exports = {
   createPatientFolders,
@@ -318,6 +323,7 @@ module.exports = {
   getSubfolderId,
   getPatientCompleteness,
   collectPatientData,
+  deleteFile,
   FOLDER_STRUCTURE,
   CATEGORY_TO_FOLDER
 };

@@ -9,6 +9,28 @@ const claude = require('../services/claude');
 router.post('/generate/:patient_id', async (req, res) => {
   try {
     const db = getDb();
+
+    // H4: limpar job travado (processando há mais de 15 minutos)
+    const TIMEOUT_MS = 15 * 60 * 1000;
+    const pacienteRef = db.collection('patients').doc(req.params.patient_id);
+    const pacienteSnap = await pacienteRef.get();
+    if (pacienteSnap.exists) {
+      const pd = pacienteSnap.data();
+      if (pd.pipeline_ativo && pd.pipeline_iniciado_em) {
+        const iniciado = pd.pipeline_iniciado_em.toDate
+          ? pd.pipeline_iniciado_em.toDate()
+          : new Date(pd.pipeline_iniciado_em);
+        if (Date.now() - iniciado.getTime() > TIMEOUT_MS) {
+          const jobsSnap = await pacienteRef.collection('jobs')
+            .where('status', '==', 'processando').get();
+          const batch = db.batch();
+          jobsSnap.forEach(d => batch.update(d.ref, { status: 'failed', error: 'Timeout automático' }));
+          batch.update(pacienteRef, { pipeline_ativo: false, pipeline_iniciado_em: null });
+          await batch.commit();
+        }
+      }
+    }
+
     const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
     if (!patientDoc.exists) return res.status(404).json({ error: 'Paciente não encontrado' });
     const patient = { id: patientDoc.id, ...patientDoc.data() };
@@ -143,8 +165,6 @@ router.post('/generate/:patient_id', async (req, res) => {
             return CLINICAL_EXT.some(e => nameLower.endsWith(e));
           });
         }
-
-        console.log('[FILTROS] Após dedup:', Object.entries(dataPackage).map(([k, v]) => k + ':' + v.length).join(', '));
 
         const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
         const comConteudo = Object.values(dataPackage).reduce((sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0);
@@ -324,7 +344,19 @@ router.delete('/:patient_id/:report_id', async (req, res) => {
     const ref = db.collection('patients').doc(req.params.patient_id).collection('reports').doc(req.params.report_id);
     const doc = await ref.get();
     if (!doc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
-    const { version } = doc.data();
+    const { version, drive_file_id } = doc.data();
+
+    // H7: remover do Drive (ignorar 404 silenciosamente)
+    if (drive_file_id) {
+      try {
+        await drive.deleteFile(drive_file_id);
+      } catch (err) {
+        if (!err.message?.includes('404') && err.code !== 404) {
+          console.error('[DELETE] Drive error (ignorado):', err.message);
+        }
+      }
+    }
+
     await ref.delete();
     const { FieldValue: FV } = require('@google-cloud/firestore');
     await db.collection('patients').doc(req.params.patient_id).update({ reports_count: FV.increment(-1) });
@@ -343,6 +375,28 @@ router.delete('/:patient_id/:report_id', async (req, res) => {
 router.post('/update/:patient_id/:report_id', async (req, res) => {
   try {
     const db = getDb();
+
+    // H4: limpar job travado (processando há mais de 15 minutos)
+    const TIMEOUT_MS = 15 * 60 * 1000;
+    const pacienteRef = db.collection('patients').doc(req.params.patient_id);
+    const pacienteSnap = await pacienteRef.get();
+    if (pacienteSnap.exists) {
+      const pd = pacienteSnap.data();
+      if (pd.pipeline_ativo && pd.pipeline_iniciado_em) {
+        const iniciado = pd.pipeline_iniciado_em.toDate
+          ? pd.pipeline_iniciado_em.toDate()
+          : new Date(pd.pipeline_iniciado_em);
+        if (Date.now() - iniciado.getTime() > TIMEOUT_MS) {
+          const jobsSnap = await pacienteRef.collection('jobs')
+            .where('status', '==', 'processando').get();
+          const batch = db.batch();
+          jobsSnap.forEach(d => batch.update(d.ref, { status: 'failed', error: 'Timeout automático' }));
+          batch.update(pacienteRef, { pipeline_ativo: false, pipeline_iniciado_em: null });
+          await batch.commit();
+        }
+      }
+    }
+
     const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
     if (!patientDoc.exists) return res.status(404).json({ error: 'Paciente não encontrado' });
     const patient = { id: patientDoc.id, ...patientDoc.data() };
