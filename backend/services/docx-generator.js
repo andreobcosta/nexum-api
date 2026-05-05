@@ -189,6 +189,13 @@ function cellaParaRuns(cellText, bold, color) {
   return segments.map(s => new TextRun(s));
 }
 
+function eLabelContentTable(rows) {
+  if (rows.length < 2) return false;
+  const dataRows = rows.slice(1);
+  return dataRows.every(r => r[0].replace(/\*\*/g, '').trim().length < 30) &&
+         dataRows.some(r => r[1].replace(/\*\*/g, '').trim().length > 40);
+}
+
 function gerarTabela(rows) {
   if (!rows.length) return null;
   const numCols = rows[0].length;
@@ -211,7 +218,7 @@ function gerarTabela(rows) {
               : colIdx === 0
                 ? { fill: 'F3F0EB', type: ShadingType.CLEAR }
                 : { fill: BRANCO, type: ShadingType.CLEAR },
-            verticalAlign: VerticalAlign.CENTER,
+            verticalAlign: VerticalAlign.TOP,
             children: [new Paragraph({
               alignment: AlignmentType.LEFT,
               children: cellaParaRuns(cellText, rowIdx === 0 || colIdx === 0, rowIdx === 0 ? BRANCO : '2C2C2A')
@@ -286,6 +293,14 @@ function parsearMarkdown(md) {
         if (rows[0].length === 1) {
           for (const row of rows) {
             if (row[0]) elementos.push(parágrafoTexto(row[0]));
+          }
+        } else if (rows[0].length === 2 && eLabelContentTable(rows)) {
+          // 2 colunas rótulo+conteúdo (seções de instrumento) → parágrafos bold+normal
+          for (const row of rows.slice(1)) {
+            const rotulo = row[0].replace(/\*\*/g, '').trim();
+            const conteudo = row[1].trim();
+            if (rotulo) elementos.push(parágrafoTexto(rotulo, { bold: true, color: '2C3828' }));
+            if (conteudo) elementos.push(parágrafoTexto(conteudo));
           }
         } else {
           const tabela = gerarTabela(rows);
@@ -717,17 +732,25 @@ async function gerarPdfDeMarkdown(contentMd, patientName, version) {
         const cells = trimmed.split('|').filter(c => c.trim()).map(c => c.trim().replace(/\*\*/g, ''));
         if (cells.length > 0) {
           const colW = Math.floor(440 / cells.length);
-          let x = 85;
           const isHeader = !lines[lines.indexOf(line) + 1] || lines[lines.indexOf(line) + 1].match(/^\|[-:\s|]+\|$/);
+          const font = isHeader ? 'Helvetica-Bold' : 'Helvetica';
+          doc.fontSize(10).font(font);
+          // Altura dinâmica: mede o conteúdo mais longo da linha (B17)
+          const rowHeight = Math.max(24, ...cells.map(c =>
+            doc.heightOfString(c, { width: colW - 6 }) + 10
+          ));
+          const rowY = doc.y;
+          let x = 85;
           cells.forEach(cell => {
-            doc.rect(x, doc.y, colW, 22).strokeColor('#D5D2CC').lineWidth(0.3).stroke();
-            if (isHeader) doc.rect(x, doc.y, colW, 22).fillColor(VERDE).fill();
-            doc.fontSize(10).font(isHeader ? 'Helvetica-Bold' : 'Helvetica')
+            doc.rect(x, rowY, colW, rowHeight).strokeColor('#D5D2CC').lineWidth(0.3).stroke();
+            if (isHeader) doc.rect(x, rowY, colW, rowHeight).fillColor(VERDE).fill();
+            doc.fontSize(10).font(font)
               .fillColor(isHeader ? '#FFFFFF' : TEXTO)
-              .text(cell, x + 3, doc.y + 4, { width: colW - 6, height: 18, ellipsis: true });
+              .text(cell, x + 3, rowY + 5, { width: colW - 6, lineBreak: true });
             x += colW;
           });
-          doc.moveDown(1.4);
+          // Reposiciona cursor após a linha sem truncar
+          doc.text(' ', 85, rowY + rowHeight + 2, { lineBreak: false });
         }
       }
       // Negrito standalone (subtítulo)
