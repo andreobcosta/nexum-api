@@ -2,7 +2,7 @@
 const {
   Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
   AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType,
-  Header, Footer, PageNumber, LevelFormat, VerticalAlign, PageBreak
+  Header, Footer, PageNumber, LevelFormat, VerticalAlign, PageBreak, TableLayoutType
 } = require('docx');
 const { getDb } = require('../db/firestore');
 
@@ -207,6 +207,7 @@ function gerarTabela(rows) {
   return new Table({
     width: { size: LARGURA_CONTEUDO, type: WidthType.DXA },
     columnWidths: colWidths,
+    layout: TableLayoutType.FIXED,
     rows: rows.map((cells, rowIdx) =>
       new TableRow({
         children: cells.map((cellText, colIdx) =>
@@ -354,13 +355,6 @@ function parsearMarkdown(md) {
       continue;
     }
 
-    // Negrito standalone como subtítulo (ex: **3.1 Histórico**)
-    if (linha.match(/^\*\*[^*]+\*\*$/) || linha.match(/^\*\*[^*]+\*\*\s*$/)) {
-      elementos.push(subTitulo(linha));
-      i++;
-      continue;
-    }
-
     // Item de lista
     if (linha.startsWith('- ') || linha.startsWith('• ')) {
       elementos.push(itemLista(linha));
@@ -383,8 +377,7 @@ function parsearMarkdown(md) {
              !linhas[i].startsWith('- ') &&
              !linhas[i].startsWith('• ') &&
              !linhas[i].startsWith('|') &&
-             !linhas[i].match(/^---+$/) &&
-             !linhas[i].match(/^\*\*[^*]+\*\*\s*$/)) {
+             !linhas[i].match(/^---+$/)) {
         textoLinhas.push(linhas[i].trim());
         i++;
       }
@@ -439,6 +432,7 @@ function gerarBlocoIdentificacao(linhasSecao1) {
   return new Table({
     width: { size: LARGURA_CONTEUDO, type: WidthType.DXA },
     columnWidths: [2800, 6226],
+    layout: TableLayoutType.FIXED,
     rows: [
       linha('Nome completo', nome),
       linha('Data de nascimento / Idade', `${nascimento}  |  ${idade}`),
