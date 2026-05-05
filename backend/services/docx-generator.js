@@ -211,6 +211,7 @@ function gerarTabela(rows) {
       new TableRow({
         children: cells.map((cellText, colIdx) =>
           new TableCell({
+            width: { size: colWidths[colIdx], type: WidthType.DXA },
             borders,
             margins: { top: 80, bottom: 80, left: 120, right: 120 },
             shading: rowIdx === 0
