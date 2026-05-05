@@ -195,7 +195,9 @@ router.post('/generate/:patient_id', async (req, res) => {
 
         try {
           const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
-          const driveFile = await drive.uploadAsGoogleDoc(reportContent, reportFileName, subfolderId, 'text/markdown');
+          const { gerarDocx } = require('../services/docx-generator');
+          const docxBuf = await gerarDocx(reportContent, nomeBase, null);
+          const driveFile = await drive.uploadDocxAsGoogleDoc(docxBuf, reportFileName, subfolderId);
           driveFileId = driveFile.id;
           driveIsGoogleDoc = true;
           console.log('[Reports] Google Doc criado no Drive:', driveFile.name, '—', driveFile.webViewLink);
@@ -568,25 +570,15 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
 
     let buffer;
 
-    // Gera buffer DOCX para conversão fiel via LibreOffice
-    let docxBuffer = null;
-    try {
-      const { gerarDocx } = require('../services/docx-generator');
-      docxBuffer = await gerarDocx(report.content_md || '', nomeBase, null);
-    } catch (docxErr) {
-      console.error('[PDF] Falha ao gerar DOCX para LibreOffice:', docxErr.message);
-    }
-
-    // Tenta exportar via LibreOffice (se DOCX disponível) ou Drive
+    // Tenta exportar PDF via Drive (Google Doc nativo)
     if (report.drive_file_id) {
       try {
         const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
         if (isDoc) {
-          console.log('[PDF] Exportando via LibreOffice (docxBuffer disponível:', !!docxBuffer, ')');
-          buffer = await drive.exportAsPdf(report.drive_file_id, docxBuffer);
+          buffer = await drive.exportAsPdf(report.drive_file_id);
         }
       } catch (driveErr) {
-        console.error('[PDF] Falha Drive/LibreOffice export — file_id:', report.drive_file_id, '| erro:', driveErr.message, '| stack:', driveErr.stack);
+        console.error('[PDF] Falha Drive export — file_id:', report.drive_file_id, '| erro:', driveErr.message);
       }
     }
 

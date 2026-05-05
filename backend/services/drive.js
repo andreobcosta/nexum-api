@@ -128,6 +128,26 @@ async function uploadAsGoogleDoc(content, fileName, folderId, mimeTypeOrigem = '
   return res.data;
 }
 
+async function uploadDocxAsGoogleDoc(docxBuffer, fileName, folderId) {
+  const drive = getDrive();
+  const { Readable } = require('stream');
+
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName.replace(/\.(md|docx)$/, ''),
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [folderId]
+    },
+    media: {
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      body: Readable.from(docxBuffer)
+    },
+    fields: 'id, name, webViewLink'
+  });
+
+  return res.data;
+}
+
 // Atualiza conteúdo de um Google Doc existente
 async function updateGoogleDoc(fileId, content, mimeTypeOrigem = 'text/markdown') {
   const drive = getDrive();
@@ -156,35 +176,7 @@ async function exportAsDocx(fileId) {
 }
 
 // Exporta Google Doc como PDF
-async function exportAsPdf(fileId, docxBuffer = null) {
-  // Se receber buffer DOCX, converte localmente via LibreOffice (mais fiel)
-  if (docxBuffer) {
-    return new Promise((resolve, reject) => {
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexum-pdf-'));
-      const docxPath = path.join(tmpDir, 'report.docx');
-      const pdfPath = path.join(tmpDir, 'report.pdf');
-      try {
-        fs.writeFileSync(docxPath, docxBuffer);
-        execFile('libreoffice', [
-          '--headless', '--convert-to', 'pdf',
-          '--outdir', tmpDir, docxPath
-        ], { timeout: 60000 }, (err) => {
-          if (err) {
-            // fallback: usar Drive export se LibreOffice falhar
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-            return exportAsPdf(fileId).then(resolve).catch(reject);
-          }
-          const buf = fs.readFileSync(pdfPath);
-          fs.rmSync(tmpDir, { recursive: true, force: true });
-          resolve(buf);
-        });
-      } catch (e) {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-        reject(e);
-      }
-    });
-  }
-  // Fallback sem buffer: comportamento anterior via Drive
+async function exportAsPdf(fileId) {
   const drive = getDrive();
   const res = await drive.files.export(
     { fileId, mimeType: 'application/pdf' },
@@ -312,6 +304,7 @@ module.exports = {
   uploadFile,
   uploadBuffer,
   uploadAsGoogleDoc,
+  uploadDocxAsGoogleDoc,
   updateGoogleDoc,
   exportAsDocx,
   exportAsPdf,
