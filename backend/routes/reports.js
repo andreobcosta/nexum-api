@@ -695,8 +695,29 @@ router.post('/:patient_id/:report_id/import-edited',
       const mammoth = require('mammoth');
       const fs = require('fs');
       const docxBuffer = fs.readFileSync(req.file.path);
-      const result = await mammoth.extractRawText({ buffer: docxBuffer });
-      const textoEditado = result.value.trim();
+      const htmlResult = await mammoth.convertToHtml({ buffer: docxBuffer });
+      const html = htmlResult.value;
+      const textoEditado = html
+        .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
+        .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
+        .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
+        .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n')
+        .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+        .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+        .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+        .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+        .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+        .replace(/<tr[^>]*>(.*?)<\/tr>/gis, (_,cells)=>{ const cols=cells.match(/<t[dh][^>]*>(.*?)<\/t[dh]>/gis)||[]; return '| '+cols.map(c=>c.replace(/<[^>]+>/g,'').trim()).join(' | ')+' |\n'; })
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&quot;/g, '"')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
       if (!textoEditado || textoEditado.length < 100) {
         fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'DOCX sem conteúdo legível' });

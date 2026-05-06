@@ -809,60 +809,22 @@ function parseHtmlToMarkdown(html){if(!html)return'';let md=html;md=md.replace(/
 function parseBlocks(md){if(!md)return[];const lines=md.split('\n');const blocks=[];let cur=null;let idx=0;for(let i=0;i<lines.length;i++){if(/^#{1,4}\s+.+/.test(lines[i])){if(cur!==null)blocks.push({id:'b'+(idx++),content:cur,feedback:null});cur=lines[i]+'\n';}else{if(cur!==null)cur+=lines[i]+'\n';else if(lines[i].trim()){cur=lines[i]+'\n';}}}if(cur)blocks.push({id:'b'+(idx++),content:cur,feedback:null});return blocks;}
 function ReportViewPage({reportId,patientId,onBack}){
   const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);
-  const[tab,setTab]=useState('relatorio');const[converting,setConverting]=useState(false);
+  const[tab,setTab]=useState('relatorio');
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[showDownloadMenu,setShowDownloadMenu]=useState(false);
-  const[blocos,setBlocos]=useState(null);const[editingId,setEditingId]=useState(null);const[editText,setEditText]=useState('');const[savingEdit,setSavingEdit]=useState(false);
+  const[blocos,setBlocos]=useState(null);
   const[feedbacks,setFeedbacks]=useState({});
-  const quillRef=useRef(null);
-  const[blocosEditados,setBlocosEditados]=useState({});
-  const[painelRevisao,setPainelRevisao]=useState(false);
-  const[feedbacksRevisao,setFeedbacksRevisao]=useState({});
   const[importing,setImporting]=useState(false);
   const importRef=useRef(null);
 
   useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setBlocos(parseBlocks(r.content_md));}).catch(console.error).finally(()=>setLoading(false));apiFetch('/reports/'+patientId+'/'+reportId+'/feedback').then(setFeedbacks).catch(()=>{});},[reportId,patientId]);
-
-  useEffect(()=>{if(!editingId)return;const container=document.getElementById('quill-editor-'+editingId);if(!container)return;const stale=container.previousElementSibling;if(stale&&stale.classList.contains('ql-toolbar'))stale.remove();container.innerHTML='';quillRef.current=null;const q=new Quill(container,{theme:'snow',modules:{toolbar:[['bold','italic','underline'],[{header:[2,3,false]}],[{list:'bullet'},{list:'ordered'}]]}});const bloco=blocos?blocos.find(b=>b.id===editingId):null;q.root.innerHTML=parseMarkdownToHtml(bloco?bloco.content:'');quillRef.current=q;},[editingId]);
 
   const isGoogleDoc=rpt?.drive_is_google_doc;
   const hasDriveFile=!!rpt?.drive_file_id;
 
   const sendFeedback=async(bId,bHeading,bContent,fType)=>{const prev=feedbacks[bId];setFeedbacks(f=>({...f,[bId]:fType}));try{await apiFetch('/reports/'+patientId+'/'+reportId+'/feedback',{method:'POST',body:JSON.stringify({bloco_id:bId,bloco_heading:bHeading,feedback_type:fType,bloco_content:bContent})});}catch(e){setFeedbacks(f=>({...f,[bId]:prev}));setToast({message:'Erro ao salvar feedback: '+e.message,type:'error'});setTimeout(()=>setToast(null),3000);}};
 
-  const saveBlockEdit=async()=>{if(!editingId||!blocos||!quillRef.current)return;setSavingEdit(true);try{const html=quillRef.current.root.innerHTML;const newContent=parseHtmlToMarkdown(html);const nb=blocos.map(b=>b.id===editingId?{...b,content:newContent}:b);const newMd=nb.map(b=>b.content).join('');await apiFetch('/reports/'+patientId+'/'+reportId,{method:'PATCH',body:JSON.stringify({content_md:newMd})});setBlocos(nb);setBlocosEditados(be=>({...be,[editingId]:{...be[editingId],texto_editado:newContent}}));setRpt(r=>({...r,content_md:newMd}));const _c=document.getElementById('quill-editor-'+editingId);if(_c){const _t=_c.previousElementSibling;if(_t&&_t.classList.contains('ql-toolbar'))_t.remove();_c.innerHTML='';}quillRef.current=null;setEditingId(null);setEditText('');setToast({message:'Bloco salvo',type:'success'});setTimeout(()=>setToast(null),3000);}catch(e){setToast({message:'Erro ao salvar: '+e.message,type:'error'});}finally{setSavingEdit(false);}};
-
-  const openInDocs=async()=>{
-    if(!hasDriveFile){setToast({message:'Arquivo ainda não está no Drive. Aguarde ou regenere o RAN.',type:'error'});return}
-    if(isGoogleDoc){
-      window.open('https://docs.google.com/document/d/'+rpt.drive_file_id+'/edit','_blank');
-    }else{
-      // Converte .md para Google Doc primeiro
-      setConverting(true);setToast({message:'Convertendo para Google Doc...',type:'info'});
-      try{
-        const r=await apiFetch('/reports/'+patientId+'/'+reportId+'/convert',{method:'POST'});
-        setRpt(prev=>({...prev,drive_file_id:r.drive_file_id,drive_is_google_doc:true}));
-        setToast({message:'Convertido! Abrindo no Google Docs...',type:'success'});
-        setTimeout(()=>window.open('https://docs.google.com/document/d/'+r.drive_file_id+'/edit','_blank'),800);
-      }catch(e){setToast({message:'Erro ao converter: '+e.message,type:'error'})}
-      finally{setConverting(false)}
-    }
-  };
-
   const baixar=async(tipo)=>{setShowDownloadMenu(false);try{const token=localStorage.getItem('nexum_token');const res=await fetch('/api/reports/'+patientId+'/'+reportId+'/'+tipo,{headers:{Authorization:'Bearer '+token}});if(!res.ok)throw new Error('HTTP '+res.status);const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='RAN_v'+rpt.version+'.'+tipo;a.click();URL.revokeObjectURL(url);}catch(e){setToast({message:'Erro ao baixar: '+e.message,type:'error'});}};
   const importarDocx=async(file)=>{if(!file)return;if(!file.name.endsWith('.docx'))return setToast({message:'Apenas arquivos .docx são aceitos',type:'error'});setImporting(true);try{const fd=new FormData();fd.append('file',file);await apiUpload('/reports/'+patientId+'/'+reportId+'/import-edited',fd);setToast({message:'Relatório importado! Padrões sendo extraídos em background.',type:'success'});setTimeout(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(setRpt);},1500);}catch(e){setToast({message:e.message,type:'error'});}finally{setImporting(false);}};
-
-  const enviarFeedbacks=async()=>{
-    const entries=Object.entries(feedbacksRevisao).filter(([bid,ft])=>ft==='ok'||ft==='erro');
-    if(entries.length===0){setPainelRevisao(false);return;}
-    try{
-      const payload=entries.map(([bid,ft])=>({bloco_id:bid,bloco_heading:(blocosEditados[bid]?.texto_original.match(/^#{1,4}\s+(.+)/)||[])[1]||bid,feedback_type:ft,texto_original:blocosEditados[bid]?.texto_original||'',texto_editado:blocosEditados[bid]?.texto_editado||''}));
-      await apiFetch('/reports/'+patientId+'/'+reportId+'/feedback/batch',{method:'POST',body:JSON.stringify(payload)});
-      setBlocosEditados({});setFeedbacksRevisao({});setPainelRevisao(false);
-      setToast({message:'Feedbacks enviados',type:'success'});setTimeout(()=>setToast(null),3000);
-    }catch(e){
-      setToast({message:'Erro ao enviar feedbacks: '+e.message,type:'error'});
-    }
-  };
 
   if(loading)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Relatório" onBack={onBack}/><Spinner text="Carregando relatório..."/></div>;
   if(!rpt)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>;
@@ -917,10 +879,7 @@ function ReportViewPage({reportId,patientId,onBack}){
               {ranMeta?.custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${ranMeta.custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
             </div>
           </Card>
-          {Object.values(blocosEditados).filter(be=>be.texto_editado!==null).length>0&&<div style={{background:'#FFF8E1',border:'1px solid '+V.amber,borderRadius:10,padding:'10px 16px',marginBottom:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontSize:13,color:V.ink2}}>{Object.values(blocosEditados).filter(be=>be.texto_editado!==null).length} bloco(s) editado(s)</span><button onClick={()=>setPainelRevisao(p=>!p)} style={{background:V.amber,border:'none',borderRadius:6,padding:'4px 12px',cursor:'pointer',fontSize:12,fontWeight:600,color:'#fff',fontFamily:'inherit'}}>{painelRevisao?'Fechar revisão':'Revisar feedbacks'}</button></div>}
-          {(blocos&&blocos.length>0)?blocos.map(b=>(<div key={b.id} style={{background:V.white,borderRadius:14,border:'1px solid '+(editingId===b.id?V.forest:V.sand2),borderLeft:'4px solid '+(feedbacks[b.id]==='ok'?V.green:feedbacks[b.id]==='erro'?V.red:feedbacks[b.id]==='ajuste'?V.amber:editingId===b.id?V.forest:V.sand2),marginBottom:10,overflow:editingId===b.id?'visible':'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.05)',transition:'border-color .2s'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 16px',borderBottom:'1px solid '+V.sand2,background:V.sand}}><span style={{fontSize:13,fontWeight:600,color:V.ink2}}>{b.content.match(/^#{1,4}\s+(.+)/)?.[1]||'Seção'}</span><div style={{display:'flex',gap:4,alignItems:'center'}}>{editingId!==b.id&&<button onClick={()=>{setEditingId(b.id);setEditText(b.content);setBlocosEditados(be=>({...be,[b.id]:{texto_original:b.content,texto_editado:null}}));}} title="Editar" style={{background:'none',border:'none',cursor:'pointer',fontSize:16,color:V.ink3,padding:'4px 8px',borderRadius:6}}>✏️</button>}{editingId!==b.id&&<button onClick={()=>{if(!window.confirm('Remover esta seção?'))return;const nb=blocos.filter(x=>x.id!==b.id);const newMd=nb.map(x=>x.content).join('');apiFetch('/reports/'+patientId+'/'+reportId,{method:'PATCH',body:JSON.stringify({content_md:newMd})}).then(()=>{setBlocos(nb);setRpt(r=>({...r,content_md:newMd}));}).catch(e=>setToast({message:'Erro ao remover: '+e.message,type:'error'}));}} title="Excluir seção" style={{background:'none',border:'none',cursor:'pointer',fontSize:16,color:V.red,padding:'4px 8px',borderRadius:6}}>🗑</button>}</div></div>{editingId===b.id?<div style={{padding:16}}><div id={'quill-editor-'+b.id} style={{minHeight:200}}/><div style={{display:'flex',gap:8,marginTop:8,justifyContent:'flex-end'}}><button onClick={()=>{const _c=document.getElementById('quill-editor-'+editingId);if(_c){const _t=_c.previousElementSibling;if(_t&&_t.classList.contains('ql-toolbar'))_t.remove();_c.innerHTML='';}quillRef.current=null;if(blocosEditados[editingId]===undefined)setBlocos(bls=>bls.filter(x=>x.id!==editingId));setEditingId(null);setEditText('');}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid '+V.sand3,background:V.white,cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>Cancelar</button><button onClick={saveBlockEdit} disabled={savingEdit} style={{padding:'8px 16px',borderRadius:8,border:'none',background:V.forest,color:V.white,cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:600,opacity:savingEdit?.6:1}}>{savingEdit?'Salvando...':'Salvar'}</button></div></div>:<div style={{padding:'16px 20px 20px'}}><Markdown content={b.content}/></div>}</div>)):<div style={{background:V.white,borderRadius:16,border:'1px solid '+V.sand2,padding:'24px 20px',paddingBottom:40,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}><Markdown content={rpt.content_md||'Conteúdo não disponível'}/></div>}
-          <button onClick={()=>{const nb={id:'b'+Date.now(),content:'## Nova Seção\n',feedback:null};setBlocos(b=>[...(b||[]),nb]);setEditingId(nb.id);setEditText(nb.content);}} style={{display:'block',width:'100%',padding:'10px 0',marginTop:4,background:'none',border:'2px dashed '+V.sand3,borderRadius:14,cursor:'pointer',fontSize:13,color:V.ink3,fontFamily:'inherit',transition:'border-color .2s,color .2s'}}>+ Adicionar seção</button>
-          {painelRevisao&&<div style={{background:V.white,borderRadius:14,border:'1px solid '+V.sand2,marginTop:8,boxShadow:'0 1px 6px rgba(0,0,0,0.08)'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',borderBottom:'1px solid '+V.sand2,background:V.sand}}><span style={{fontSize:13,fontWeight:600,color:V.ink2}}>Revisão de feedbacks</span><button onClick={()=>setPainelRevisao(false)} style={{background:'none',border:'none',cursor:'pointer',fontSize:16,color:V.ink3}}>✕</button></div>{Object.entries(blocosEditados).filter(([bid,be])=>be.texto_editado!==null).map(([bid,be])=><div key={bid} style={{borderBottom:'1px solid '+V.sand2,padding:16}}><div style={{fontSize:12,fontWeight:600,color:V.ink3,marginBottom:8}}>{(be.texto_original.match(/^#{1,4}\s+(.+)/)||[])[1]||bid}</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}><div style={{background:V.sand,borderRadius:8,padding:10,fontSize:11,color:V.ink3,whiteSpace:'pre-wrap',lineHeight:1.5}}><div style={{fontSize:10,fontWeight:700,color:V.ink3,marginBottom:4}}>ORIGINAL</div>{be.texto_original}</div><div style={{background:V.sage2,borderRadius:8,padding:10,fontSize:11,color:V.ink,whiteSpace:'pre-wrap',lineHeight:1.5}}><div style={{fontSize:10,fontWeight:700,color:V.forest,marginBottom:4}}>EDITADO</div>{be.texto_editado}</div></div><div style={{display:'flex',gap:6}}><button onClick={()=>setFeedbacksRevisao(fr=>({...fr,[bid]:'ok'}))} style={{padding:'4px 10px',borderRadius:6,border:'1px solid '+V.green,background:feedbacksRevisao[bid]==='ok'?V.green:'none',color:feedbacksRevisao[bid]==='ok'?'#fff':V.green,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>✓ Quase certo</button><button onClick={()=>setFeedbacksRevisao(fr=>({...fr,[bid]:'erro'}))} style={{padding:'4px 10px',borderRadius:6,border:'1px solid '+V.red,background:feedbacksRevisao[bid]==='erro'?V.red:'none',color:feedbacksRevisao[bid]==='erro'?'#fff':V.red,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>✗ Estava errado</button><button onClick={()=>setFeedbacksRevisao(fr=>({...fr,[bid]:'pular'}))} style={{padding:'4px 10px',borderRadius:6,border:'1px solid '+V.sand3,background:feedbacksRevisao[bid]==='pular'?V.sand3:'none',color:V.ink3,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Pular</button></div></div>)}<div style={{padding:'12px 16px',display:'flex',justifyContent:'flex-end'}}><button onClick={enviarFeedbacks} style={{padding:'8px 20px',borderRadius:8,border:'none',background:V.forest,color:'#fff',cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:600}}>Enviar feedbacks</button></div></div>}
+          {(blocos&&blocos.length>0)?(<div style={{padding:'0 4px'}}>{blocos.map(b=>(<div key={b.id} style={{marginBottom:16,paddingBottom:16,borderBottom:'1px solid '+V.sand2}}><Markdown content={b.content}/></div>))}</div>):(<Markdown content={rpt.content_md||''}/>)}
         </>}
         {tab==='revisao'&&(revisao?<RevisaoCard revisao={revisao}/>:
           <div style={{textAlign:'center',padding:40,color:V.ink3}}><div style={{fontSize:32,marginBottom:12}}>📋</div><div>Dados de revisão não disponíveis para este relatório</div></div>
