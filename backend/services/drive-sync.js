@@ -8,12 +8,12 @@ const WEBHOOK_TTL_MS = 6 * 24 * 60 * 60 * 1000; // 6 dias (Drive máximo é 7)
 const WEBHOOK_URL = process.env.APP_URL + '/api/drive/webhook';
 
 function getDrive() {
-  const auth = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
-  );
-  auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+  const { google } = require('googleapis');
+  const { GoogleAuth } = require('google-auth-library');
+  const auth = new GoogleAuth({
+    keyFile: '/app/secrets/nexum-service-account.json',
+    scopes: ['https://www.googleapis.com/auth/drive']
+  });
   return google.drive({ version: 'v3', auth });
 }
 
