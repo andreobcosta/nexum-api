@@ -817,6 +817,8 @@ function ReportViewPage({reportId,patientId,onBack}){
   const[blocosEditados,setBlocosEditados]=useState({});
   const[painelRevisao,setPainelRevisao]=useState(false);
   const[feedbacksRevisao,setFeedbacksRevisao]=useState({});
+  const[importing,setImporting]=useState(false);
+  const importRef=useRef(null);
 
   useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setBlocos(parseBlocks(r.content_md));}).catch(console.error).finally(()=>setLoading(false));apiFetch('/reports/'+patientId+'/'+reportId+'/feedback').then(setFeedbacks).catch(()=>{});},[reportId,patientId]);
 
@@ -847,6 +849,7 @@ function ReportViewPage({reportId,patientId,onBack}){
   };
 
   const baixar=async(tipo)=>{setShowDownloadMenu(false);try{const token=localStorage.getItem('nexum_token');const res=await fetch('/api/reports/'+patientId+'/'+reportId+'/'+tipo,{headers:{Authorization:'Bearer '+token}});if(!res.ok)throw new Error('HTTP '+res.status);const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='RAN_v'+rpt.version+'.'+tipo;a.click();URL.revokeObjectURL(url);}catch(e){setToast({message:'Erro ao baixar: '+e.message,type:'error'});}};
+  const importarDocx=async(file)=>{if(!file)return;if(!file.name.endsWith('.docx'))return setToast({message:'Apenas arquivos .docx são aceitos',type:'error'});setImporting(true);try{const fd=new FormData();fd.append('file',file);await apiUpload('/reports/'+patientId+'/'+reportId+'/import-edited',fd);setToast({message:'Relatório importado! Padrões sendo extraídos em background.',type:'success'});setTimeout(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(setRpt);},1500);}catch(e){setToast({message:e.message,type:'error'});}finally{setImporting(false);}};
 
   const enviarFeedbacks=async()=>{
     const entries=Object.entries(feedbacksRevisao).filter(([bid,ft])=>ft==='ok'||ft==='erro');
@@ -879,10 +882,8 @@ function ReportViewPage({reportId,patientId,onBack}){
               <button onClick={()=>baixar('pdf')} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>
             </div>}
           </div>
-          {/* Botão Editar — abre no Google Docs, convertendo se necessário */}
-          <button onClick={openInDocs} disabled={converting} title={isGoogleDoc?"Editar no Google Docs":"Converter e editar no Google Docs"} style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',opacity:converting?.6:1}}>
-            {converting?'Convertendo...':'✏️ Editar'}
-          </button>
+          <input ref={importRef} type="file" accept=".docx" style={{display:'none'}} onChange={e=>importarDocx(e.target.files[0])}/>
+          <button onClick={()=>importRef.current?.click()} disabled={importing} title="Importar DOCX editado" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',opacity:importing?.6:1}}>{importing?'Importando...':'⬆ Importar DOCX'}</button>
         </div>
       }/>
 

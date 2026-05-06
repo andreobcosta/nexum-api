@@ -579,9 +579,104 @@ async function updateRAN(systemPromptRAN, patientInfo, ranExistente, rawNovosDoc
   };
 }
 
+async function extrairPadroesDoRelatorio({ db, patient_id, report_id, textoOriginal, textoEditado, userEmail }) {
+  if (!textoOriginal || textoOriginal.trim() === textoEditado.trim()) {
+    console.log('[Padroes] Sem diferenças para extrair');
+    return;
+  }
+
+  const prompt = `Você é um analisador de estilo profissional clínico.
+
+Compare o RELATÓRIO ORIGINAL (gerado por IA) com o RELATÓRIO EDITADO (corrigido pela profissional).
+
+RELATÓRIO ORIGINAL:
+${textoOriginal.slice(0, 6000)}
+
+RELATÓRIO EDITADO:
+${textoEditado.slice(0, 6000)}
+
+Identifique APENAS padrões de ESTILO e ESTRUTURA que a profissional prefere.
+NUNCA extraia dados numéricos, nomes de pacientes, pontuações de testes ou conclusões diagnósticas específicas.
+
+Retorne JSON puro (sem markdown):
+{
+  "padroes": [
+    {
+      "tipo": "estilo|estrutura|interpretacao|encaminhamento",
+      "descricao": "descrição clara do padrão identificado",
+      "exemplo_original": "trecho do original (máx 80 chars)",
+      "exemplo_editado": "como a profissional reescreveu (máx 80 chars)",
+      "instrumento": "nome do instrumento se específico, ou null",
+      "confianca": "alta|media|baixa"
+    }
+  ]
+}
+
+Regras críticas:
+- Máximo 8 padrões por relatório
+- Confiança "baixa" para mudanças que podem ser específicas do paciente
+- Se uma mudança contém dados numéricos ou nome do paciente, IGNORE
+- Foco em: tom, vocabulário preferido, ordem de seções, forma de introduzir análises`;
+
+  const { text } = await callClaude(
+    'Você extrai padrões de estilo profissional de relatórios clínicos. Retorne apenas JSON válido.',
+    prompt,
+    2000,
+    MODEL_SONNET
+  );
+
+  let padroes = [];
+  try {
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    padroes = (parsed.padroes || []).filter(p =>
+      p.confianca !== 'baixa' && p.descricao && p.descricao.length > 10
+    );
+  } catch (e) {
+    console.error('[Padroes] Falha ao parsear resposta:', e.message);
+    return;
+  }
+
+  if (padroes.length === 0) {
+    console.log('[Padroes] Nenhum padrão válido extraído');
+    return;
+  }
+
+  const settingsRef = db.collection('clinic_settings').doc(userEmail);
+  const settingsDoc = await settingsRef.get();
+  const existing = settingsDoc.exists ? (settingsDoc.data().padroes_profissionais || []) : [];
+
+  const agora = new Date().toISOString();
+  for (const novoPadrao of padroes) {
+    const similar = existing.find(e =>
+      e.tipo === novoPadrao.tipo &&
+      e.instrumento === novoPadrao.instrumento &&
+      e.descricao.slice(0, 40) === novoPadrao.descricao.slice(0, 40)
+    );
+    if (similar) {
+      similar.ocorrencias = (similar.ocorrencias || 1) + 1;
+      similar.ultima_ocorrencia = agora;
+      if (similar.ocorrencias >= 3) similar.ativo = true;
+    } else {
+      existing.push({
+        ...novoPadrao,
+        ocorrencias: 1,
+        ativo: false,
+        criado_em: agora,
+        ultima_ocorrencia: agora,
+        fonte_relatorio: report_id
+      });
+    }
+  }
+
+  await settingsRef.set({ padroes_profissionais: existing }, { merge: true });
+  console.log(`[Padroes] ${padroes.length} padrão(ões) processado(s) para ${userEmail}`);
+}
+
 module.exports = {
   callClaude: async (sp, um, mt, m) => (await callClaude(sp, um, mt, m)).text,
   generateRAN,
   updateRAN,
-  getSystemPrompt
+  getSystemPrompt,
+  extrairPadroesDoRelatorio
 };

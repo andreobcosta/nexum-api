@@ -673,6 +673,72 @@ router.patch('/:patient_id/:report_id', async (req, res) => {
   }
 });
 
+// POST /api/reports/:patient_id/:report_id/import-edited
+// Recebe DOCX editado pelo cliente, extrai texto, salva como nova versão
+// e dispara extração de padrões profissionais em background
+router.post('/:patient_id/:report_id/import-edited',
+  require('multer')({ dest: require('path').join(__dirname,'../temp'), limits:{ fileSize: 20*1024*1024 } }).single('file'),
+  async (req, res) => {
+    try {
+      const db = getDb();
+      const { patient_id, report_id } = req.params;
+
+      if (!req.file) return res.status(400).json({ error: 'Arquivo DOCX obrigatório' });
+      const ext = require('path').extname(req.file.originalname).toLowerCase();
+      if (ext !== '.docx') return res.status(400).json({ error: 'Apenas arquivos .docx são aceitos' });
+
+      const reportRef = db.collection('patients').doc(patient_id).collection('reports').doc(report_id);
+      const reportDoc = await reportRef.get();
+      if (!reportDoc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
+      const report = reportDoc.data();
+
+      const mammoth = require('mammoth');
+      const fs = require('fs');
+      const docxBuffer = fs.readFileSync(req.file.path);
+      const result = await mammoth.extractRawText({ buffer: docxBuffer });
+      const textoEditado = result.value.trim();
+      if (!textoEditado || textoEditado.length < 100) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: 'DOCX sem conteúdo legível' });
+      }
+
+      const now = new Date().toISOString();
+      await reportRef.update({
+        content_md: textoEditado,
+        status: 'imported',
+        imported_at: now,
+        imported_from: req.file.originalname,
+        sync_source: 'import'
+      });
+
+      fs.unlinkSync(req.file.path);
+
+      res.json({ message: 'Relatório importado com sucesso', imported_at: now });
+
+      setImmediate(async () => {
+        try {
+          const claude = require('../services/claude');
+          await claude.extrairPadroesDoRelatorio({
+            db,
+            patient_id,
+            report_id,
+            textoOriginal: report.content_md || '',
+            textoEditado,
+            userEmail: req.user?.email || 'default'
+          });
+        } catch (e) {
+          console.error('[ImportEdit] Erro ao extrair padrões:', e.message);
+        }
+      });
+
+    } catch (err) {
+      console.error('[ImportEdit]', err.message);
+      if (req.file?.path) { try { require('fs').unlinkSync(req.file.path); } catch {} }
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
 // POST /api/reports/:patient_id/:report_id/convert — converte .md para Google Doc nativo
 router.post('/:patient_id/:report_id/convert', async (req, res) => {
   try {
