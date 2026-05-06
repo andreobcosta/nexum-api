@@ -253,20 +253,8 @@ function PipelineProgress({stage,message}){
 /* ── REVISAO CARD ── */
 function RevisaoCard({revisao}){
   if(!revisao)return null;
-  const score=revisao.score_qualidade||0;
-  const color=score>=85?V.green:score>=70?V.amber:V.red;
   return(
     <Card style={{marginBottom:12}}>
-      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}>
-        <div style={{width:52,height:52,borderRadius:'50%',background:color+'22',border:'3px solid '+color,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-          <span style={{fontSize:16,fontWeight:700,color,fontFamily:"'Fraunces',serif"}}>{score}</span>
-        </div>
-        <div>
-          <div style={{fontSize:13,fontWeight:600,color:V.ink}}>Score de Qualidade</div>
-          <div style={{fontSize:12,color:V.ink3}}>Revisão automática do Agente Revisor</div>
-        </div>
-        <Badge type={score>=70?'ready':'missing'} text={score>=70?'Aprovado':'Revisar'}/>
-      </div>
       {revisao.alertas?.length>0&&<div style={{background:V.amberLight,borderRadius:10,padding:'10px 14px',marginBottom:8}}>
         <div style={{fontSize:11,fontWeight:700,color:V.amber,marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>⚠ Alertas</div>
         {revisao.alertas.map((a,i)=><div key={i} style={{fontSize:12,color:V.amber,marginBottom:3}}>• {a}</div>)}
@@ -875,7 +863,6 @@ function ReportViewPage({reportId,patientId,onBack}){
                 <Badge type={rpt.status==='reviewed'?'done':'draft'} text={rpt.status==='reviewed'?'Revisado':'Rascunho'}/>
                 <div style={{fontSize:12,color:V.ink3,marginTop:6}}>{new Date(rpt.generated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div>
               </div>
-              {revisao&&<div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:700,color:revisao.score_qualidade>=70?V.green:V.amber,fontFamily:"'Fraunces',serif"}}>{revisao.score_qualidade}</div><div style={{fontSize:10,color:V.ink3}}>score</div></div>}
               {ranMeta?.custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${ranMeta.custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
             </div>
           </Card>
