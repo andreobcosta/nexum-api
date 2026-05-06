@@ -1378,7 +1378,7 @@ function App(){
     {page.name==='admin'&&<AdminPage onBack={()=>nav('settings')}/>}
     {page.name==='import'&&<ImportPage onBack={()=>nav('list')}/>}
     {page.name==='new'&&<NewPatientPage onBack={()=>nav('list')} onCreated={id=>nav('detail',{patientId:id})}/>}
-    {page.name==='detail'&&<PatientDetailPage patientId={page.patientId} onBack={()=>nav('list')} onCapture={(id,cat)=>nav('capture',{patientId:id,initialCat:cat})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})}/>}
+    {page.name==='detail'&&<PatientDetailPage key={page.patientId+(page.reload||'')} patientId={page.patientId} onBack={()=>nav('list')} onCapture={(id,cat)=>nav('capture',{patientId:id,initialCat:cat})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})}/>}
     {page.name==='capture'&&<CapturePage patientId={page.patientId} initialCat={page.initialCat} onBack={()=>nav('detail',{patientId:page.patientId})} onDone={()=>nav('detail',{patientId:page.patientId,reload:Date.now()})}/>}
     {page.name==='report'&&<ReportViewPage reportId={page.reportId} patientId={page.patientId} onBack={()=>page.patientId?nav('detail',{patientId:page.patientId}):nav('list')}/>}
     {page.name==='edit'&&<EditPatientPage patientId={page.patientId} onBack={()=>nav('detail',{patientId:page.patientId})} onSaved={()=>nav('detail',{patientId:page.patientId})}/>}
