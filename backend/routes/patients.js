@@ -35,15 +35,18 @@ router.get('/:id', async (req, res) => {
     const patient = { id: doc.id, ...doc.data() };
     const filesSnap = await db.collection('patients').doc(doc.id).collection('files').orderBy('created_at', 'desc').get();
     const reportsSnap = await db.collection('patients').doc(doc.id).collection('reports').orderBy('version', 'desc').get();
-    const filesByCategory = {};
-    for (const f of filesSnap.docs) {
-      const data = { id: f.id, ...f.data() };
-      if (!filesByCategory[data.category]) filesByCategory[data.category] = [];
-      filesByCategory[data.category].push(data);
-    }
+    const filesArr = filesSnap.docs.map(f => ({ id: f.id, ...f.data() }));
+    filesArr.sort((a, b) => {
+      const ca = (a.categoria || a.category || '').toLowerCase();
+      const cb = (b.categoria || b.category || '').toLowerCase();
+      if (ca < cb) return -1; if (ca > cb) return 1;
+      const na = (a.display_name || a.original_name || '').toLowerCase();
+      const nb = (b.display_name || b.original_name || '').toLowerCase();
+      return na < nb ? -1 : na > nb ? 1 : 0;
+    });
     const counts = { anamnese: 0, teste: 0, sessao: 0, externo: 0 };
-    for (const cat of Object.keys(counts)) counts[cat] = (filesByCategory[cat] || []).length;
-    patient.files = filesByCategory;
+    for (const f of filesArr) { if (counts[f.category] !== undefined) counts[f.category]++; }
+    patient.files = filesArr;
     patient.reports = reportsSnap.docs.map(r => ({ id: r.id, ...r.data() }));
     patient.completeness = { ...counts, reports: reportsSnap.size };
     patient.ready_for_ran = counts.anamnese > 0 && counts.teste > 0 && counts.sessao > 0;

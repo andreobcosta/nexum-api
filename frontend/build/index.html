@@ -499,46 +499,37 @@ function NewPatientPage({onBack,onCreated}){
 }
 
 
-function FileItem({f,patientId,categories,onDeleted,onError,onPreviewFile}){
+function FileItem({f,patientId,categories,onDeleted,onCategoryChanged,onError,onPreviewFile}){
   const[confirm,setConfirm]=useState(false);
   const[deleting,setDeleting]=useState(false);
   const[renaming,setRenaming]=useState(false);
   const[newName,setNewName]=useState('');
-  const del=async()=>{
-    if(!confirm){setConfirm(true);setTimeout(()=>setConfirm(false),3000);return}
-    setDeleting(true);
-    try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'DELETE'});onDeleted()}
-    catch(e){onError(e.message)}finally{setDeleting(false)}
-  };
+  const del=async()=>{if(!confirm){setConfirm(true);setTimeout(()=>setConfirm(false),3000);return;}setDeleting(true);try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'DELETE'});onDeleted();}catch(e){onError(e.message);}finally{setDeleting(false);}};
   const startRename=()=>{setNewName(f.display_name||f.original_name);setRenaming(true);};
-  const saveRename=async()=>{
-    const n=newName.trim();
-    if(!n||n===(f.display_name||f.original_name)){setRenaming(false);return;}
-    try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({display_name:n})});setRenaming(false);onDeleted();}
-    catch(e){onError(e.message);setRenaming(false);}
-  };
-  const changeCategory=async(cat)=>{
-    try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({categoria:cat})});}
-    catch(e){onError(e.message);}
-  };
+  const saveRename=async()=>{const n=newName.trim();if(!n||n===(f.display_name||f.original_name)){setRenaming(false);return;}try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({display_name:n})});setRenaming(false);onDeleted();}catch(e){onError(e.message);setRenaming(false);}};
+  const changeCategory=async(cat)=>{try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({categoria:cat})});if(onCategoryChanged)onCategoryChanged();}catch(e){onError(e.message);}};
   return(
-    <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:V.sand,borderRadius:10}}>
-      <span style={{fontSize:16}}>{f.file_type==='audio'?'🎙':f.file_type==='image'?'🖼':'📄'}</span>
-      <div style={{flex:1,minWidth:0}}>
-        {renaming
-          ?<input value={newName} onChange={e=>setNewName(e.target.value)} onBlur={saveRename} onKeyDown={e=>{if(e.key==='Enter')saveRename();if(e.key==='Escape')setRenaming(false);}} autoFocus style={{width:'100%',fontSize:12,padding:'2px 6px',border:'1px solid '+V.sand3,borderRadius:6,fontFamily:'inherit',outline:'none'}}/>
-          :<div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:onPreviewFile?'pointer':'default',color:onPreviewFile?V.blue:V.ink}} onClick={()=>onPreviewFile&&onPreviewFile(f)}>{f.display_name||f.original_name}</div>
-        }
-        {f.transcription&&<div style={{fontSize:11,color:V.green,marginTop:2}}>✓ Transcrito</div>}
-        {f.file_type==='audio'&&!f.transcription&&<div style={{fontSize:11,color:V.amber,marginTop:2}}>⏳ Não transcrito</div>}
-        {f.file_type==='image'&&f.legibility_score!=null&&<div style={{fontSize:11,color:f.legibility_score>=70?V.green:f.legibility_score>=40?V.amber:V.red,marginTop:2}}>{f.legibility_score>=70?'🟢 Boa qualidade':f.legibility_score>=40?'🟡 Qualidade parcial':'🔴 Baixa qualidade — considere reenviar'}</div>}
-        {categories&&categories.length>0&&<select value={f.categoria||''} onChange={e=>changeCategory(e.target.value)} style={{fontSize:10,marginTop:3,padding:'2px 4px',border:'1px solid '+V.sand3,borderRadius:4,background:V.white,color:V.ink3,fontFamily:'inherit',cursor:'pointer',maxWidth:'100%'}}><option value="">— Categoria —</option>{categories.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}</select>}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 140px 80px',padding:'10px 12px',borderBottom:'1px solid '+V.sand2,alignItems:'center',gap:8}}>
+      <div style={{minWidth:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{fontSize:14,flexShrink:0}}>{f.file_type==='audio'?'🎙':f.file_type==='image'?'🖼':'📄'}</span>
+          {renaming?<input value={newName} onChange={e=>setNewName(e.target.value)} onBlur={saveRename} onKeyDown={e=>{if(e.key==='Enter')saveRename();if(e.key==='Escape')setRenaming(false);}} autoFocus style={{flex:1,fontSize:12,padding:'2px 6px',border:'1px solid '+V.sand3,borderRadius:6,fontFamily:'inherit',outline:'none'}}/>:<div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:onPreviewFile?'pointer':'default',color:onPreviewFile?V.blue:V.ink}} onClick={()=>onPreviewFile&&onPreviewFile(f)} onContextMenu={e=>{e.preventDefault();startRename();}}>{f.display_name||f.original_name}</div>}
+        </div>
+        {f.file_type==='image'&&f.legibility_score!=null&&<div style={{fontSize:10,color:f.legibility_score>=70?V.green:f.legibility_score>=40?V.amber:V.red,marginTop:2,marginLeft:20}}>{f.legibility_score>=70?'🟢 Boa':f.legibility_score>=40?'🟡 Parcial':'🔴 Baixa'}</div>}
+        {f.file_type==='audio'&&<div style={{fontSize:10,color:f.transcription?V.green:V.amber,marginTop:2,marginLeft:20}}>{f.transcription?'✓ Transcrito':'⏳ Pendente'}</div>}
       </div>
-      <button onClick={startRename} title="Renomear" style={{background:'none',border:'none',cursor:'pointer',fontSize:13,padding:'4px 6px',color:V.ink4,flexShrink:0}}>✏️</button>
-      {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" title="Abrir no Drive" style={{color:V.blue,fontSize:16,textDecoration:'none',flexShrink:0,padding:'4px 8px'}}>🔗</a>}
-      <button onClick={del} disabled={deleting} title={confirm?"Clique para confirmar exclusão":"Excluir arquivo"} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:16,padding:'4px 8px',borderRadius:8,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400,transition:'all .2s'}}>
-        {deleting?'...':confirm?'Confirmar exclusão?':'🗑'}
-      </button>
+      <div>
+        <select value={f.categoria||''} onChange={e=>changeCategory(e.target.value)} style={{width:'100%',fontSize:11,padding:'4px 6px',border:'1px solid '+V.sand3,borderRadius:6,background:V.white,color:f.categoria?V.ink:V.ink3,fontFamily:'inherit',cursor:'pointer'}}>
+          <option value="">— Categoria —</option>
+          {(categories||[]).map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+      </div>
+      <div style={{display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+        <button onClick={startRename} title="Renomear" style={{background:'none',border:'none',cursor:'pointer',fontSize:13,padding:'4px',color:V.ink4,flexShrink:0}}>✏️</button>
+        <button onClick={del} disabled={deleting} title={confirm?'Confirmar exclusão':'Excluir'} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:13,padding:'4px',borderRadius:6,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400}}>
+          {deleting?'...':confirm?'✓':'🗑'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -595,7 +586,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
     {key:'externo',label:'Docs. externos',icon:'📎',required:false}
   ];
 
-  const files=patient.files||{};
+  const files=patient.files||[];
   const reports=patient.reports||[];
 
   return(
@@ -662,42 +653,18 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
           </div>
         )}
 
-        {/* Documentos por categoria */}
-        <div style={{fontSize:11,fontWeight:700,color:V.ink3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>Documentos</div>
-        <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
-          {ALL_CATS.map(cat=>{
-            const catFiles=files[cat.key]||[];
-            const expanded=expandedCat===cat.key;
-            return(
-              <div key={cat.key} style={{background:V.white,borderRadius:14,border:'1px solid '+V.sand2,overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
-                <div onClick={()=>setExpandedCat(expanded?null:cat.key)} title={cat.label} style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
-                  <span style={{fontSize:18}}>{cat.icon}</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:600,color:V.ink}}>{cat.label}</div>
-                    <div style={{fontSize:12,color:catFiles.length>0?V.green:cat.required?V.amber:V.ink4}}>{catFiles.length>0?catFiles.length+' arquivo(s)':cat.required?'Necessário':'Vazio'}</div>
-                  </div>
-                  <span style={{color:V.ink4,fontSize:16,transform:expanded?'rotate(90deg)':'rotate(0)',transition:'transform .2s'}}>›</span>
-                </div>
-                {expanded&&(
-                  <div style={{borderTop:'1px solid '+V.sand2,padding:'12px 16px'}}>
-                    {catFiles.length===0?(
-                      <div style={{color:V.ink3,fontSize:13,textAlign:'center',padding:'8px 0'}}>Nenhum arquivo</div>
-                    ):(
-                      <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                        {catFiles.map(f=><FileItem key={f.id} f={f} patientId={patientId} categories={customCats} onDeleted={()=>{load();setToast({message:f.original_name+' removido',type:'success'})}} onError={e=>setToast({message:e,type:'error'})} onPreviewFile={onPreviewFile}/>)}
-                      </div>
-                    )}
-                    <div style={{marginTop:12}}>
-                      <Btn onClick={()=>onCapture(patientId,cat.key)} variant="secondary" full small icon="↑">Adicionar arquivo</Btn>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Captura rápida */}
+        {/* Documentos — lista plana */}
+        <div style={{fontSize:11,fontWeight:700,color:V.ink3,letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:8}}>DOCUMENTOS</div>
+        {files.length===0?(
+          <div style={{background:V.white,borderRadius:14,textAlign:'center',color:V.ink3,fontSize:13,padding:'20px 0',marginBottom:16}}>Nenhum arquivo enviado</div>
+        ):(
+          <div style={{background:V.white,borderRadius:14,overflow:'hidden',marginBottom:16}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 140px 80px',padding:'8px 12px',borderBottom:'1px solid '+V.sand2,fontSize:11,fontWeight:700,color:V.ink3,textTransform:'uppercase',letterSpacing:'0.04em'}}>
+              <span>Arquivo</span><span>Categoria</span><span style={{textAlign:'right'}}>Ações</span>
+            </div>
+            {files.map(f=><FileItem key={f.id} f={f} patientId={patientId} categories={customCats} onDeleted={()=>load()} onCategoryChanged={()=>load()} onError={e=>setToast({message:e,type:'error'})} onPreviewFile={onPreviewFile}/>)}
+          </div>
+        )}
         <Btn onClick={()=>onCapture(patientId,null)} full icon="↑" variant="secondary">Enviar arquivo</Btn>
       </div>
 
