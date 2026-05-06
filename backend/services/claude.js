@@ -321,8 +321,18 @@ Valide o RAN e produza este JSON:
   "secoes_ausentes": [],
   "problemas_criticos": [],
   "alertas": [],
-  "sugestoes": []
+  "sugestoes": [],
+  "correcoes_ortograficas": []
 }
+
+CORREÇÃO ORTOGRÁFICA OBRIGATÓRIA:
+Antes de avaliar o conteúdo clínico, você DEVE identificar e listar
+todos os erros ortográficos, de concordância verbal e nominal, e de
+pontuação presentes no relatório. Inclua a correção de cada erro
+encontrado no campo "correcoes_ortograficas" da sua resposta JSON.
+O campo deve seguir o formato:
+[{"original": "palavra errada", "correto": "palavra certa", "secao": "nome da seção"}]
+Se não houver erros, retorne um array vazio [].
 
 ## VALIDAÇÕES OBRIGATÓRIAS DE INSTRUMENTOS
 
@@ -342,6 +352,7 @@ ${libraryStr}
 - Equilíbrio entre prejuízos e potencialidades: +10 pontos
 - Orientações específicas ao perfil: +10 pontos
 - Tom formal-técnico acessível: +5 pontos
+- Erros ortográficos: −5 pontos por erro (máximo −20)
 
 Seções obrigatórias: Cabeçalho, Queixa Principal, Anamnese, Resumo Escolar, Visita Escolar, Avaliação Neuropsicopedagógica, Análise dos Instrumentos, Conclusão Integrada, Quadro Síntese, Orientações, Encaminhamentos, Considerações Finais.
 
