@@ -20,11 +20,12 @@ const CATEGORY_TO_FOLDER = {
 };
 
 function getAuth() {
-  const { GoogleAuth } = require('google-auth-library');
-  const auth = new GoogleAuth({
-    keyFile: '/app/secrets/nexum-service-account.json',
-    scopes: ['https://www.googleapis.com/auth/drive']
-  });
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+  auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
   return auth;
 }
 
