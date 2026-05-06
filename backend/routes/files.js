@@ -143,6 +143,7 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
         }
 
       } catch (fileErr) {
+        console.error('[Files] Erro ao processar arquivo:', file.originalname, '|', fileErr.message);
         errors.push({ name: file.originalname, error: fileErr.message });
       } finally {
         if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
@@ -162,6 +163,9 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
       created_at: now
     });
 
+    if (results.length === 0) {
+      console.error('[Files] Nenhum arquivo processado. Erros:', JSON.stringify(errors));
+    }
     const hasAudio = results.some(r => r.transcribing);
     res.status(201).json({
       message: `${results.length} arquivo(s) enviado(s)${hasAudio ? ' — áudio(s) sendo transcritos em background' : ''}${errors.length > 0 ? `, ${errors.length} erro(s)` : ''}`,
