@@ -717,15 +717,38 @@ router.post('/:patient_id/:report_id/import-edited',
         .replace(/&nbsp;/g, ' ')
         .replace(/&quot;/g, '"')
         .replace(/\n{3,}/g, '\n\n')
+        .replace(/\*{3,}/g, '')
         .trim();
       if (!textoEditado || textoEditado.length < 100) {
         fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'DOCX sem conteúdo legível' });
       }
 
+      const marcadoresCorpo = [
+        /^#+\s*QUEIXA PRINCIPAL/im,
+        /^#+\s*1\.\s*QUEIXA/im,
+        /^QUEIXA PRINCIPAL/im
+      ];
+      let corpoEditado = textoEditado;
+      for (const marcador of marcadoresCorpo) {
+        const match = textoEditado.search(marcador);
+        if (match !== -1) { corpoEditado = textoEditado.slice(match); break; }
+      }
+
+      let cabecalhoOriginal = '';
+      const contentOriginal = report.content_md || '';
+      for (const marcador of marcadoresCorpo) {
+        const match = contentOriginal.search(marcador);
+        if (match !== -1) { cabecalhoOriginal = contentOriginal.slice(0, match); break; }
+      }
+
+      const conteudoFinal = cabecalhoOriginal
+        ? cabecalhoOriginal.trimEnd() + '\n\n' + corpoEditado
+        : corpoEditado;
+
       const now = new Date().toISOString();
       await reportRef.update({
-        content_md: textoEditado,
+        content_md: conteudoFinal,
         status: 'imported',
         imported_at: now,
         imported_from: req.file.originalname,
@@ -744,7 +767,7 @@ router.post('/:patient_id/:report_id/import-edited',
             patient_id,
             report_id,
             textoOriginal: report.content_md || '',
-            textoEditado,
+            textoEditado: conteudoFinal,
             userEmail: req.user?.email || 'default'
           });
         } catch (e) {
