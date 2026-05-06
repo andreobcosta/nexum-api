@@ -248,23 +248,46 @@ router.patch('/:patient_id/:file_id', async (req, res) => {
   }
 });
 
-// GET /api/files/:patient_id/:file_id/download — retorna URLs de preview/download
-router.get('/:patient_id/:file_id/download', async (req, res) => {
+// GET /api/files/:patient_id/:file_id/info — metadados para o preview
+router.get('/:patient_id/:file_id/info', async (req, res) => {
   try {
     const db = getDb();
-    const doc = await db.collection('patients').doc(req.params.patient_id).collection('files').doc(req.params.file_id).get();
+    const doc = await db.collection('patients').doc(req.params.patient_id)
+      .collection('files').doc(req.params.file_id).get();
     if (!doc.exists) return res.status(404).json({ error: 'Arquivo não encontrado' });
     const file = doc.data();
     const id = file.drive_file_id;
     res.json({
       id: req.params.file_id,
       name: file.display_name || file.original_name,
+      original_name: file.original_name,
+      file_type: file.file_type,
       drive_file_id: id,
-      preview_url: id ? 'https://drive.google.com/file/d/' + id + '/preview' : null,
-      download_url: id ? 'https://drive.google.com/uc?export=download&id=' + id : null
+      content: file.content || file.transcription || null,
+      preview_url: id ? 'https://drive.google.com/file/d/' + id + '/preview' : null
     });
   } catch (err) {
-    res.status(500).json({ error: 'Erro ao buscar arquivo', details: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/files/:patient_id/:file_id/download — proxy do arquivo via Drive API
+router.get('/:patient_id/:file_id/download', async (req, res) => {
+  try {
+    const db = getDb();
+    const doc = await db.collection('patients').doc(req.params.patient_id)
+      .collection('files').doc(req.params.file_id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Arquivo não encontrado' });
+    const file = doc.data();
+    if (!file.drive_file_id) return res.status(404).json({ error: 'Arquivo sem ID no Drive' });
+    const driveService = require('../services/drive');
+    const { stream, mimeType, name } = await driveService.downloadFileStream(file.drive_file_id, file.original_name);
+    res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(name) + '"');
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    stream.pipe(res);
+  } catch (err) {
+    console.error('[Files] Download error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

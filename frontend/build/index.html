@@ -1220,9 +1220,10 @@ function SettingsPage({onBack,onAdmin}){
   if(loading)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Configurações" onBack={onBack}/><Spinner text="Carregando..."/></div>);
   return(
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
-      <Header title="Configurações" subtitle="Layout do relatório" onBack={onBack}/>
+      <Header title="Configurações" onBack={onBack}/>
       <div style={{flex:1,overflow:'auto',padding:20}}>
-        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+        <div style={{background:V.white,borderRadius:16,padding:20,marginBottom:16,display:'flex',flexDirection:'column',gap:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:V.ink,letterSpacing:'0.04em',textTransform:'uppercase'}}>Layout do Relatório</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
             <div><label style={lb}>Fonte</label><select style={{...inp,cursor:'pointer'}} value={form.fonte} onChange={e=>setForm(f=>({...f,fonte:e.target.value}))}><option>Arial</option><option>Helvetica</option><option>Times New Roman</option><option>Georgia</option><option>Verdana</option><option>Courier New</option></select></div>
             <div><label style={lb}>Tamanho</label><select style={{...inp,cursor:'pointer'}} value={form.tamanho} onChange={e=>setForm(f=>({...f,tamanho:e.target.value}))}><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option></select></div>
@@ -1240,26 +1241,26 @@ function SettingsPage({onBack,onAdmin}){
             <label style={{...lb,marginTop:8}}>URL da logo (alternativa)</label>
             <input style={inp} value={form.logo_url} onChange={e=>setForm(f=>({...f,logo_url:e.target.value}))} placeholder="https://... (usado se nenhuma imagem foi enviada acima)"/>
           </div>
-          <div>
-            <label style={lb}>Categorias personalizadas</label>
-            <div style={{fontSize:12,color:V.ink3,marginBottom:10}}>Etiquetas para classificar arquivos individualmente dentro das pastas.</div>
-            <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:10}}>
-              {cats.map(c=>(
-                <div key={c.key} style={{display:'flex',gap:8,alignItems:'center'}}>
-                  <span style={{flex:1,fontSize:13,padding:'6px 10px',background:V.sand2,borderRadius:8,color:V.ink}}>{c.label}</span>
-                  <button onClick={()=>removeCat(c.key)} style={{background:'none',border:'none',color:V.red,cursor:'pointer',fontSize:14,padding:'4px 8px',fontFamily:'inherit',flexShrink:0}}>✕</button>
-                </div>
-              ))}
-            </div>
-            <div style={{display:'flex',gap:8}}>
-              <input value={newCatLabel} onChange={e=>setNewCatLabel(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addCat();}} placeholder="Nova categoria..." style={{...inp,flex:1,padding:'10px 12px'}}/>
-              <button onClick={addCat} style={{padding:'10px 16px',background:V.forest,color:V.white,border:'none',borderRadius:12,cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:600,flexShrink:0}}>+</button>
-            </div>
-            {cats.length>0&&<div style={{marginTop:10}}><Btn onClick={saveCats} loading={catSaving} full>Salvar categorias</Btn></div>}
-          </div>
-          <Btn onClick={save} loading={saving} full>Salvar configurações</Btn>
-          {onAdmin&&<button onClick={onAdmin} style={{width:'100%',padding:'12px 16px',borderRadius:12,border:'1px solid '+V.sand3,background:'none',cursor:'pointer',fontSize:13,color:V.ink3,fontFamily:'inherit',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>🔧 Administração do sistema<span style={{color:V.ink4}}>›</span></button>}
+          <Btn onClick={save} loading={saving} full>Salvar layout</Btn>
         </div>
+        <div style={{background:V.white,borderRadius:16,padding:20,marginBottom:16,display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:V.ink,letterSpacing:'0.04em',textTransform:'uppercase'}}>Categorias de Arquivo</div>
+          <div style={{fontSize:12,color:V.ink3}}>Etiquetas para classificar os arquivos dos pacientes.</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {cats.map(c=>(
+              <div key={c.key} style={{display:'flex',gap:8,alignItems:'center'}}>
+                <span style={{flex:1,fontSize:13,padding:'6px 10px',background:V.sand2,borderRadius:8,color:V.ink}}>{c.label}</span>
+                <button onClick={()=>removeCat(c.key)} style={{background:'none',border:'none',color:V.red,cursor:'pointer',fontSize:14,padding:'4px 8px',fontFamily:'inherit',flexShrink:0}}>✕</button>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <input value={newCatLabel} onChange={e=>setNewCatLabel(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addCat();}} placeholder="Nova categoria..." style={{...inp,flex:1,padding:'10px 12px'}}/>
+            <button onClick={addCat} style={{padding:'10px 16px',background:V.forest,color:V.white,border:'none',borderRadius:12,cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:600,flexShrink:0}}>+</button>
+          </div>
+          <Btn onClick={saveCats} loading={catSaving} full>Salvar categorias</Btn>
+        </div>
+        {onAdmin&&<button onClick={onAdmin} style={{width:'100%',padding:'12px 16px',borderRadius:12,border:'1px solid '+V.sand3,background:'none',cursor:'pointer',fontSize:13,color:V.ink3,fontFamily:'inherit',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>🔧 Administração do sistema<span style={{color:V.ink4}}>›</span></button>}
       </div>
       <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
     </div>
@@ -1268,17 +1269,20 @@ function SettingsPage({onBack,onAdmin}){
 
 /* ── PAGE: FILE PREVIEW ── */
 function FilePreviewPage({patientId,fileId,onBack}){
-  const[info,setInfo]=useState(null);const[loading,setLoading]=useState(true);
-  useEffect(()=>{apiFetch('/files/'+patientId+'/'+fileId+'/download').then(setInfo).catch(console.error).finally(()=>setLoading(false));},[patientId,fileId]);
+  const[info,setInfo]=useState(null);const[loading,setLoading]=useState(true);const[dl,setDl]=useState(false);
+  useEffect(()=>{apiFetch('/files/'+patientId+'/'+fileId+'/info').then(setInfo).catch(console.error).finally(()=>setLoading(false));},[patientId,fileId]);
+  const doDownload=async()=>{setDl(true);try{const r=await fetch(API+'/files/'+patientId+'/'+fileId+'/download',{headers:{'Authorization':'Bearer '+localStorage.getItem('nexum_token')}});if(!r.ok)throw new Error('Falha no download');const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=info.original_name||info.name;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}catch(e){console.error('[FilePreview] download:',e.message);}finally{setDl(false);}};
   if(loading)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Arquivo" onBack={onBack}/><Spinner text="Carregando..."/></div>);
   if(!info)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>);
   return(
-    <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
-      <Header title={info.name} subtitle="Visualização" onBack={onBack} right={info.download_url?<a href={info.download_url} target="_blank" rel="noopener" style={{background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:8,textDecoration:'none',fontSize:12,fontWeight:600}}>⬇ Baixar</a>:null}/>
-      <div style={{flex:1,overflow:'hidden'}}>
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#1a1a1a'}}>
+      <Header title={info.name} subtitle="Visualização" onBack={onBack} right={<button onClick={doDownload} disabled={dl} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',flexShrink:0}}>{dl?'...':'⬇ Baixar'}</button>}/>
+      <div style={{flex:1,overflow:'auto',position:'relative'}}>
         {info.preview_url
-          ?<iframe src={info.preview_url} style={{width:'100%',height:'100%',border:'none'}} title={info.name}/>
-          :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:V.ink3,fontSize:14}}>Pré-visualização não disponível</div>
+          ?<iframe src={info.preview_url} style={{width:'100%',height:'100%',border:'none',position:'absolute',inset:0}} title={info.name}/>
+          :info.content
+            ?<div style={{padding:20,color:V.sand,fontSize:14,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{info.content}</div>
+            :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:V.ink3,fontSize:14}}>Pré-visualização não disponível</div>
         }
       </div>
     </div>

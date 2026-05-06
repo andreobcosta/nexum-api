@@ -299,6 +299,20 @@ async function renameFile(fileId, newName) {
   await drive.files.update({ fileId, requestBody: { name: newName } });
 }
 
+async function downloadFileStream(fileId, originalName) {
+  const drive = getDrive();
+  const meta = await drive.files.get({ fileId, fields: 'name,mimeType' });
+  const response = await drive.files.get(
+    { fileId, alt: 'media' },
+    { responseType: 'stream' }
+  );
+  return {
+    stream: response.data,
+    mimeType: meta.data.mimeType,
+    name: meta.data.name || originalName || fileId
+  };
+}
+
 // ── EXPORTS — todas as funções definidas acima ──
 module.exports = {
   createPatientFolders,
@@ -319,6 +333,7 @@ module.exports = {
   collectPatientData,
   deleteFile,
   renameFile,
+  downloadFileStream,
   FOLDER_STRUCTURE,
   CATEGORY_TO_FOLDER
 };
