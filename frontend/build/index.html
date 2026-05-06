@@ -44,7 +44,10 @@ input,select,textarea,button{font-family:inherit;-webkit-appearance:none}
 @keyframes progressFill{from{width:0}to{width:100%}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 
-::-webkit-scrollbar{width:0;height:0}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#c5b99a;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#a89880}
 
 /* ── OVERLAY / MODAL ── */
 .overlay{position:fixed;inset:0;background:rgba(11,61,46,0.45);z-index:300;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .2s;backdrop-filter:blur(2px)}
@@ -496,25 +499,43 @@ function NewPatientPage({onBack,onCreated}){
 }
 
 
-function FileItem({f,patientId,onDeleted,onError}){
+function FileItem({f,patientId,categories,onDeleted,onError,onPreviewFile}){
   const[confirm,setConfirm]=useState(false);
   const[deleting,setDeleting]=useState(false);
+  const[renaming,setRenaming]=useState(false);
+  const[newName,setNewName]=useState('');
   const del=async()=>{
     if(!confirm){setConfirm(true);setTimeout(()=>setConfirm(false),3000);return}
     setDeleting(true);
     try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'DELETE'});onDeleted()}
     catch(e){onError(e.message)}finally{setDeleting(false)}
   };
+  const startRename=()=>{setNewName(f.display_name||f.original_name);setRenaming(true);};
+  const saveRename=async()=>{
+    const n=newName.trim();
+    if(!n||n===(f.display_name||f.original_name)){setRenaming(false);return;}
+    try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({display_name:n})});setRenaming(false);onDeleted();}
+    catch(e){onError(e.message);setRenaming(false);}
+  };
+  const changeCategory=async(cat)=>{
+    try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({categoria:cat})});}
+    catch(e){onError(e.message);}
+  };
   return(
     <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:V.sand,borderRadius:10}}>
       <span style={{fontSize:16}}>{f.file_type==='audio'?'🎙':f.file_type==='image'?'🖼':'📄'}</span>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.original_name}</div>
+        {renaming
+          ?<input value={newName} onChange={e=>setNewName(e.target.value)} onBlur={saveRename} onKeyDown={e=>{if(e.key==='Enter')saveRename();if(e.key==='Escape')setRenaming(false);}} autoFocus style={{width:'100%',fontSize:12,padding:'2px 6px',border:'1px solid '+V.sand3,borderRadius:6,fontFamily:'inherit',outline:'none'}}/>
+          :<div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:onPreviewFile?'pointer':'default',color:onPreviewFile?V.blue:V.ink}} onClick={()=>onPreviewFile&&onPreviewFile(f)}>{f.display_name||f.original_name}</div>
+        }
         {f.transcription&&<div style={{fontSize:11,color:V.green,marginTop:2}}>✓ Transcrito</div>}
         {f.file_type==='audio'&&!f.transcription&&<div style={{fontSize:11,color:V.amber,marginTop:2}}>⏳ Não transcrito</div>}
         {f.file_type==='image'&&f.legibility_score!=null&&<div style={{fontSize:11,color:f.legibility_score>=70?V.green:f.legibility_score>=40?V.amber:V.red,marginTop:2}}>{f.legibility_score>=70?'🟢 Boa qualidade':f.legibility_score>=40?'🟡 Qualidade parcial':'🔴 Baixa qualidade — considere reenviar'}</div>}
+        {categories&&categories.length>0&&<select value={f.categoria||''} onChange={e=>changeCategory(e.target.value)} style={{fontSize:10,marginTop:3,padding:'2px 4px',border:'1px solid '+V.sand3,borderRadius:4,background:V.white,color:V.ink3,fontFamily:'inherit',cursor:'pointer',maxWidth:'100%'}}><option value="">— Categoria —</option>{categories.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}</select>}
       </div>
-      {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" title="Abrir arquivo" style={{color:V.blue,fontSize:16,textDecoration:'none',flexShrink:0,padding:'4px 8px'}}>🔗</a>}
+      <button onClick={startRename} title="Renomear" style={{background:'none',border:'none',cursor:'pointer',fontSize:13,padding:'4px 6px',color:V.ink4,flexShrink:0}}>✏️</button>
+      {f.drive_file_id&&<a href={'https://drive.google.com/file/d/'+f.drive_file_id+'/view'} target="_blank" rel="noopener" title="Abrir no Drive" style={{color:V.blue,fontSize:16,textDecoration:'none',flexShrink:0,padding:'4px 8px'}}>🔗</a>}
       <button onClick={del} disabled={deleting} title={confirm?"Clique para confirmar exclusão":"Excluir arquivo"} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:16,padding:'4px 8px',borderRadius:8,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400,transition:'all .2s'}}>
         {deleting?'...':confirm?'Confirmar exclusão?':'🗑'}
       </button>
@@ -523,14 +544,16 @@ function FileItem({f,patientId,onDeleted,onError}){
 }
 
 /* ── PAGE: PATIENT DETAIL ── */
-function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit}){
+function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPreviewFile}){
   const[patient,setPatient]=useState(null);const[loading,setLoading]=useState(true);
   const[generating,setGenerating]=useState(false);const[pipelineStage,setPipelineStage]=useState(null);const[pipelineMsg,setPipelineMsg]=useState('');
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[confirmDel,setConfirmDel]=useState(null);
   const[expandedCat,setExpandedCat]=useState(null);
+  const[customCats,setCustomCats]=useState([]);
 
   const load=useCallback(()=>{setLoading(true);apiFetch('/patients/'+patientId).then(setPatient).catch(console.error).finally(()=>setLoading(false))},[patientId]);
   useEffect(()=>{load()},[load]);
+  useEffect(()=>{apiFetch('/settings/categorias').then(d=>setCustomCats(d.categorias||[])).catch(()=>{});},[]);
 
   const runPipeline=async(endpoint,successMsg)=>{
     setGenerating(true);setPipelineStage('analitico');setPipelineMsg('Iniciando...');
@@ -661,7 +684,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit}){
                       <div style={{color:V.ink3,fontSize:13,textAlign:'center',padding:'8px 0'}}>Nenhum arquivo</div>
                     ):(
                       <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                        {catFiles.map(f=><FileItem key={f.id} f={f} patientId={patientId} onDeleted={()=>{load();setToast({message:f.original_name+' removido',type:'success'})}} onError={e=>setToast({message:e,type:'error'})}/>)}
+                        {catFiles.map(f=><FileItem key={f.id} f={f} patientId={patientId} categories={customCats} onDeleted={()=>{load();setToast({message:f.original_name+' removido',type:'success'})}} onError={e=>setToast({message:e,type:'error'})} onPreviewFile={onPreviewFile}/>)}
                       </div>
                     )}
                     <div style={{marginTop:12}}>
@@ -1184,8 +1207,13 @@ function SettingsPage({onBack,onAdmin}){
   const[form,setForm]=useState({fonte:'Arial',tamanho:'12',cabecalho:'',logo_url:'',logo_base64:''});
   const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};
   const[logoScale,setLogoScale]=useState(100);const[logoOriginal,setLogoOriginal]=useState('');
+  const[cats,setCats]=useState([]);const[catSaving,setCatSaving]=useState(false);const[newCatLabel,setNewCatLabel]=useState('');
   useEffect(()=>{apiFetch('/settings/layout').then(d=>{setForm({fonte:d.fonte||'Arial',tamanho:String(d.tamanho||'12'),cabecalho:d.cabecalho||'',logo_url:d.logo_url||'',logo_base64:d.logo_base64||''});if(d.logo_base64)setLogoOriginal(d.logo_base64);}).catch(()=>{}).finally(()=>setLoading(false));},[]);
+  useEffect(()=>{apiFetch('/settings/categorias').then(d=>setCats(d.categorias||[])).catch(()=>{});},[]);
   const save=async()=>{setSaving(true);try{await apiFetch('/settings/layout',{method:'PUT',body:JSON.stringify(form)});setToast({message:'Layout salvo!',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setSaving(false);}};
+  const addCat=()=>{const lbl=newCatLabel.trim();if(!lbl)return;const key=lbl.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')||'cat_'+Date.now();setCats(c=>[...c,{key,label:lbl}]);setNewCatLabel('');};
+  const removeCat=(key)=>setCats(c=>c.filter(x=>x.key!==key));
+  const saveCats=async()=>{setCatSaving(true);try{await apiFetch('/settings/categorias',{method:'PUT',body:JSON.stringify({categorias:cats})});setToast({message:'Categorias salvas!',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setCatSaving(false);}};
   const inp={width:'100%',padding:'12px 14px',border:'1.5px solid '+V.sand3,borderRadius:12,fontSize:15,background:V.white,outline:'none',color:V.ink};
   const lb={fontSize:12,fontWeight:600,color:V.ink3,marginBottom:6,display:'block',textTransform:'uppercase',letterSpacing:'0.04em'};
   const resizarImagem=(dataUrl,scale,cb)=>{const img=new Image();img.onload=function(){const maxW=400*(scale/100),maxH=120*(scale/100);const ratio=Math.min(maxW/img.width,maxH/img.height,1);const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*ratio);canvas.height=Math.round(img.height*ratio);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);cb(canvas.toDataURL('image/png'));};img.src=dataUrl;};
@@ -1212,11 +1240,47 @@ function SettingsPage({onBack,onAdmin}){
             <label style={{...lb,marginTop:8}}>URL da logo (alternativa)</label>
             <input style={inp} value={form.logo_url} onChange={e=>setForm(f=>({...f,logo_url:e.target.value}))} placeholder="https://... (usado se nenhuma imagem foi enviada acima)"/>
           </div>
+          <div>
+            <label style={lb}>Categorias personalizadas</label>
+            <div style={{fontSize:12,color:V.ink3,marginBottom:10}}>Etiquetas para classificar arquivos individualmente dentro das pastas.</div>
+            <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:10}}>
+              {cats.map(c=>(
+                <div key={c.key} style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <span style={{flex:1,fontSize:13,padding:'6px 10px',background:V.sand2,borderRadius:8,color:V.ink}}>{c.label}</span>
+                  <button onClick={()=>removeCat(c.key)} style={{background:'none',border:'none',color:V.red,cursor:'pointer',fontSize:14,padding:'4px 8px',fontFamily:'inherit',flexShrink:0}}>✕</button>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <input value={newCatLabel} onChange={e=>setNewCatLabel(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addCat();}} placeholder="Nova categoria..." style={{...inp,flex:1,padding:'10px 12px'}}/>
+              <button onClick={addCat} style={{padding:'10px 16px',background:V.forest,color:V.white,border:'none',borderRadius:12,cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:600,flexShrink:0}}>+</button>
+            </div>
+            {cats.length>0&&<div style={{marginTop:10}}><Btn onClick={saveCats} loading={catSaving} full>Salvar categorias</Btn></div>}
+          </div>
           <Btn onClick={save} loading={saving} full>Salvar configurações</Btn>
           {onAdmin&&<button onClick={onAdmin} style={{width:'100%',padding:'12px 16px',borderRadius:12,border:'1px solid '+V.sand3,background:'none',cursor:'pointer',fontSize:13,color:V.ink3,fontFamily:'inherit',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>🔧 Administração do sistema<span style={{color:V.ink4}}>›</span></button>}
         </div>
       </div>
       <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
+    </div>
+  )
+}
+
+/* ── PAGE: FILE PREVIEW ── */
+function FilePreviewPage({patientId,fileId,onBack}){
+  const[info,setInfo]=useState(null);const[loading,setLoading]=useState(true);
+  useEffect(()=>{apiFetch('/files/'+patientId+'/'+fileId+'/download').then(setInfo).catch(console.error).finally(()=>setLoading(false));},[patientId,fileId]);
+  if(loading)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Arquivo" onBack={onBack}/><Spinner text="Carregando..."/></div>);
+  if(!info)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>);
+  return(
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
+      <Header title={info.name} subtitle="Visualização" onBack={onBack} right={info.download_url?<a href={info.download_url} target="_blank" rel="noopener" style={{background:'rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:8,textDecoration:'none',fontSize:12,fontWeight:600}}>⬇ Baixar</a>:null}/>
+      <div style={{flex:1,overflow:'hidden'}}>
+        {info.preview_url
+          ?<iframe src={info.preview_url} style={{width:'100%',height:'100%',border:'none'}} title={info.name}/>
+          :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:V.ink3,fontSize:14}}>Pré-visualização não disponível</div>
+        }
+      </div>
     </div>
   )
 }
@@ -1378,7 +1442,8 @@ function App(){
     {page.name==='admin'&&<AdminPage onBack={()=>nav('settings')}/>}
     {page.name==='import'&&<ImportPage onBack={()=>nav('list')}/>}
     {page.name==='new'&&<NewPatientPage onBack={()=>nav('list')} onCreated={id=>nav('detail',{patientId:id})}/>}
-    {page.name==='detail'&&<PatientDetailPage key={page.patientId+(page.reload||'')} patientId={page.patientId} onBack={()=>nav('list')} onCapture={(id,cat)=>nav('capture',{patientId:id,initialCat:cat})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})}/>}
+    {page.name==='detail'&&<PatientDetailPage key={page.patientId+(page.reload||'')} patientId={page.patientId} onBack={()=>nav('list')} onCapture={(id,cat)=>nav('capture',{patientId:id,initialCat:cat})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})} onPreviewFile={f=>nav('filepreview',{patientId:page.patientId,fileId:f.id})}/>}
+    {page.name==='filepreview'&&<FilePreviewPage patientId={page.patientId} fileId={page.fileId} onBack={()=>nav('detail',{patientId:page.patientId})}/>}
     {page.name==='capture'&&<CapturePage patientId={page.patientId} initialCat={page.initialCat} onBack={()=>nav('detail',{patientId:page.patientId})} onDone={()=>nav('detail',{patientId:page.patientId,reload:Date.now()})}/>}
     {page.name==='report'&&<ReportViewPage reportId={page.reportId} patientId={page.patientId} onBack={()=>page.patientId?nav('detail',{patientId:page.patientId}):nav('list')}/>}
     {page.name==='edit'&&<EditPatientPage patientId={page.patientId} onBack={()=>nav('detail',{patientId:page.patientId})} onSaved={()=>nav('detail',{patientId:page.patientId})}/>}

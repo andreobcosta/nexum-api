@@ -294,6 +294,11 @@ async function deleteFile(fileId) {
   await drive.files.delete({ fileId });
 }
 
+async function renameFile(fileId, newName) {
+  const drive = getDrive();
+  await drive.files.update({ fileId, requestBody: { name: newName } });
+}
+
 // ── EXPORTS — todas as funções definidas acima ──
 module.exports = {
   createPatientFolders,
@@ -313,6 +318,7 @@ module.exports = {
   getPatientCompleteness,
   collectPatientData,
   deleteFile,
+  renameFile,
   FOLDER_STRUCTURE,
   CATEGORY_TO_FOLDER
 };

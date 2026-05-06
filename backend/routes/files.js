@@ -226,6 +226,48 @@ router.get('/patient/:patient_id', async (req, res) => {
   }
 });
 
+// PATCH /api/files/:patient_id/:file_id — renomear display_name ou trocar categoria
+router.patch('/:patient_id/:file_id', async (req, res) => {
+  try {
+    const db = getDb();
+    const ref = db.collection('patients').doc(req.params.patient_id).collection('files').doc(req.params.file_id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Arquivo não encontrado' });
+    const file = doc.data();
+    const update = { updated_at: new Date().toISOString() };
+    if (req.body.categoria !== undefined) update.categoria = req.body.categoria;
+    if (req.body.display_name !== undefined) {
+      update.display_name = req.body.display_name;
+      if (file.drive_file_id) await drive.renameFile(file.drive_file_id, req.body.display_name).catch(e => console.warn('[Files] renameFile falhou:', e.message));
+    }
+    await ref.update(update);
+    res.json({ message: 'Arquivo atualizado', ...update });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erro ao atualizar arquivo', details: err.message });
+  }
+});
+
+// GET /api/files/:patient_id/:file_id/download — retorna URLs de preview/download
+router.get('/:patient_id/:file_id/download', async (req, res) => {
+  try {
+    const db = getDb();
+    const doc = await db.collection('patients').doc(req.params.patient_id).collection('files').doc(req.params.file_id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Arquivo não encontrado' });
+    const file = doc.data();
+    const id = file.drive_file_id;
+    res.json({
+      id: req.params.file_id,
+      name: file.display_name || file.original_name,
+      drive_file_id: id,
+      preview_url: id ? 'https://drive.google.com/file/d/' + id + '/preview' : null,
+      download_url: id ? 'https://drive.google.com/uc?export=download&id=' + id : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar arquivo', details: err.message });
+  }
+});
+
 // DELETE /api/files/:patient_id/:file_id
 router.delete('/:patient_id/:file_id', async (req, res) => {
   try {

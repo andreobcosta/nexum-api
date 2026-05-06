@@ -34,4 +34,36 @@ router.put('/layout', async (req, res) => {
   }
 });
 
+const DEFAULT_CATEGORIAS = [
+  { key: 'anamnese', label: 'Anamnese' },
+  { key: 'teste', label: 'Teste' },
+  { key: 'sessao', label: 'Sessão' },
+  { key: 'externo', label: 'Documento Externo' }
+];
+
+// GET /api/settings/categorias
+router.get('/categorias', async (req, res) => {
+  try {
+    const db = getDb();
+    const doc = await db.collection('clinic_settings').doc(req.user.email).get();
+    const data = doc.exists ? doc.data() : {};
+    res.json({ categorias: data.categorias || DEFAULT_CATEGORIAS });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao ler categorias', details: err.message });
+  }
+});
+
+// PUT /api/settings/categorias
+router.put('/categorias', async (req, res) => {
+  try {
+    const { categorias } = req.body;
+    if (!Array.isArray(categorias)) return res.status(400).json({ error: 'categorias deve ser um array' });
+    const db = getDb();
+    await db.collection('clinic_settings').doc(req.user.email).set({ categorias, updated_at: new Date().toISOString() }, { merge: true });
+    res.json({ message: 'Categorias salvas', categorias });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao salvar categorias', details: err.message });
+  }
+});
+
 module.exports = router;
