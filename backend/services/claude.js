@@ -692,12 +692,13 @@ TEXTO IMPORTADO:
 ${textoImportado.slice(0, 12000)}
 
 INSTRUÇÕES:
-1. Reescreva o relatório COMPLETO seguindo EXATAMENTE a estrutura do sistema (12 seções obrigatórias)
-2. Preserve TODO o conteúdo clínico — não invente dados, não omita informações
-3. Se uma seção do texto importado não corresponder a uma seção padrão, crie uma nova seção com título adequado
-4. Use os DADOS DO PACIENTE acima para o cabeçalho — ignore o cabeçalho do texto importado
-5. Mantenha o tom e linguagem clínica do texto original
-6. Retorne APENAS o Markdown do relatório, sem comentários adicionais
+1. Reescreva o relatório COMPLETO seguindo a estrutura do sistema (12 seções obrigatórias)
+2. Preserve TODO o conteúdo clínico — não invente dados, não omita NENHUMA informação do texto importado
+3. Se o texto importado contiver seções extras além das 12 padrão, INCLUA-AS no relatório final após as seções obrigatórias, mantendo o título original
+4. Se uma seção do texto importado não corresponder a nenhuma das 12 seções padrão, crie uma nova seção com o título original preservado
+5. Use os DADOS DO PACIENTE acima para o cabeçalho — ignore o cabeçalho do texto importado
+6. Mantenha o tom e linguagem clínica do texto original
+7. Retorne APENAS o Markdown do relatório, sem comentários adicionais
 Data: ${new Date().toLocaleDateString('pt-BR')}. Local: Uberlândia-MG.`;
 
   const { text, usage } = await callClaude(
