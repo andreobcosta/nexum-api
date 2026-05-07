@@ -824,7 +824,7 @@ function ReportViewPage({reportId,patientId,onBack}){
   const[blocos,setBlocos]=useState(null);
   const[feedbacks,setFeedbacks]=useState({});const[patient,setPatient]=useState(null);
 
-  useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setBlocos(parseBlocks(r.content_md));}).catch(console.error).finally(()=>setLoading(false));apiFetch('/reports/'+patientId+'/'+reportId+'/feedback').then(setFeedbacks).catch(()=>{});apiFetch('/patients/'+patientId).then(setPatient).catch(()=>{});},[reportId,patientId]);
+  useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);const md=r.content_md||'';const marcadores=[/^#+\s*QUEIXA PRINCIPAL/im,/^QUEIXA PRINCIPAL/im];let corpo=md;for(const m of marcadores){const i=md.search(m);if(i!==-1){corpo=md.slice(i);break;}}setBlocos(parseBlocks(corpo));}).catch(console.error).finally(()=>setLoading(false));apiFetch('/reports/'+patientId+'/'+reportId+'/feedback').then(setFeedbacks).catch(()=>{});apiFetch('/patients/'+patientId).then(setPatient).catch(()=>{});},[reportId,patientId]);
 
   const isGoogleDoc=rpt?.drive_is_google_doc;
   const hasDriveFile=!!rpt?.drive_file_id;
@@ -884,7 +884,7 @@ function ReportViewPage({reportId,patientId,onBack}){
             </div>
           </Card>
           {patient&&<div style={{background:V.white,borderRadius:14,border:'1px solid '+V.sand2,marginBottom:16,overflow:'hidden'}}>{[['Nome completo',patient.full_name],['Data de nascimento / Idade',(patient.birth_date?new Date(patient.birth_date+'T12:00:00').toLocaleDateString('pt-BR'):'—')+' | '+(patient.age?patient.age+' anos':'—')],['Escolaridade',patient.grade||'—'],['Dominância manual',patient.handedness||'—'],['Medicamentos',patient.medications||'—'],['Responsáveis',patient.guardians||'—']].map(([k,v])=>(<div key={k} style={{display:'grid',gridTemplateColumns:'200px 1fr',borderBottom:'1px solid '+V.sand2}}><div style={{padding:'8px 12px',background:'#F3F0EB',fontSize:12,fontWeight:600,color:V.forest}}>{k}</div><div style={{padding:'8px 12px',fontSize:12,color:V.ink}}>{v}</div></div>))}</div>}
-          {(blocos&&blocos.length>0)?(<div style={{padding:'0 4px'}}>{blocos.filter(b=>{const t=b.content.trim();return !t.match(/^(Nome da Criança|Nome completo|Data de Nasc|Escolaridade|Dominância|Faz uso|Responsáveis|Patrízia|RAN\s*-)/i);}).map(b=>(<div key={b.id} style={{marginBottom:16,paddingBottom:16,borderBottom:'1px solid '+V.sand2}}><Markdown content={b.content}/></div>))}</div>):(<Markdown content={rpt.content_md||''}/>)}
+          {(blocos&&blocos.length>0)?(<div style={{padding:'0 4px'}}>{blocos.map(b=>(<div key={b.id} style={{marginBottom:16,paddingBottom:16,borderBottom:'1px solid '+V.sand2}}><Markdown content={b.content}/></div>))}</div>):(<Markdown content={rpt.content_md||''}/>)}
         </>}
         {tab==='revisao'&&(revisao?<RevisaoCard revisao={revisao}/>:
           <div style={{textAlign:'center',padding:40,color:V.ink3}}><div style={{fontSize:32,marginBottom:12}}>📋</div><div>Dados de revisão não disponíveis para este relatório</div></div>
