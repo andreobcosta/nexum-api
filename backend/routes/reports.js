@@ -733,6 +733,60 @@ router.post('/:patient_id/:report_id/import-edited',
         return res.status(400).json({ error: 'DOCX sem conteúdo legível' });
       }
 
+      // Extrair dados do cabeçalho do DOCX importado e atualizar paciente
+      try {
+        const linhasImport = textoEditado.split('\n').slice(0, 30);
+        const extrairCampo = (labels) => {
+          for (const label of labels) {
+            const linha = linhasImport.find(l => l.toLowerCase().includes(label.toLowerCase() + ':'));
+            if (linha) {
+              const val = linha.split(':').slice(1).join(':').trim().replace(/\*\*/g,'').trim();
+              if (val && val.length > 0) return val;
+            }
+          }
+          return null;
+        };
+        const nome = extrairCampo(['Nome da Criança','Nome completo','Nome']);
+        const nascimento = extrairCampo(['Data de Nascimento','Data de nascimento','Nascimento']);
+        const escolaridade = extrairCampo(['Escolaridade']);
+        const dominancia = extrairCampo(['Dominância manual','Dominancia manual','Dominância','Dominancia']);
+        const medicamentos = extrairCampo(['Faz uso de medicamentos','Medicamentos']);
+        const responsaveis = extrairCampo(['Responsáveis','Responsaveis']);
+        const linhaData = linhasImport.find(l => l.toLowerCase().includes('data de nascimento') || l.toLowerCase().includes('nascimento:'));
+        let idadeImport = null;
+        if (linhaData && linhaData.includes('|')) {
+          const partes = linhaData.split('|');
+          if (partes[1]) idadeImport = partes[1].replace(/idade:/i,'').replace(/\*\*/g,'').trim();
+        }
+        const patientRef = db.collection('patients').doc(patient_id);
+        const patientSnap = await patientRef.get();
+        if (patientSnap.exists) {
+          const pd = patientSnap.data();
+          const updates = {};
+          if (!pd.full_name && nome) updates.full_name = nome;
+          if (!pd.birth_date && nascimento) {
+            const partes = nascimento.split('/');
+            if (partes.length === 3) updates.birth_date = partes[2]+'-'+partes[1]+'-'+partes[0];
+            else updates.birth_date = nascimento;
+          }
+          if (!pd.grade && escolaridade) updates.grade = escolaridade;
+          if ((!pd.handedness || pd.handedness === 'Nao informado' || pd.handedness === 'Não informado') && dominancia) updates.handedness = dominancia;
+          if (!pd.medications && medicamentos) updates.medications = medicamentos;
+          if (!pd.guardians && responsaveis) updates.guardians = responsaveis;
+          if (!pd.age && idadeImport) {
+            const ageNum = parseInt(idadeImport);
+            if (!isNaN(ageNum)) updates.age = ageNum;
+          }
+          if (Object.keys(updates).length > 0) {
+            updates.updated_at = new Date().toISOString();
+            await patientRef.update(updates);
+            console.log('[ImportEdit] Paciente atualizado com dados do cabeçalho:', Object.keys(updates));
+          }
+        }
+      } catch (cabErr) {
+        console.warn('[ImportEdit] Erro ao extrair cabeçalho para paciente:', cabErr.message);
+      }
+
       const marcadoresCorpo = [
         /^#+\s*QUEIXA PRINCIPAL/im,
         /^#+\s*1\.\s*QUEIXA/im,
