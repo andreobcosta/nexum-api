@@ -529,6 +529,8 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
   const[generating,setGenerating]=useState(false);const[pipelineStage,setPipelineStage]=useState(null);const[pipelineMsg,setPipelineMsg]=useState('');
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[confirmDel,setConfirmDel]=useState(null);
   const[expandedCat,setExpandedCat]=useState(null);
+  const[showAtualizarMenu,setShowAtualizarMenu]=useState(false);
+  const importRanRef=useRef(null);
   const[customCats,setCustomCats]=useState([]);
 
   const load=useCallback(()=>{setLoading(true);apiFetch('/patients/'+patientId).then(setPatient).catch(console.error).finally(()=>setLoading(false))},[patientId]);
@@ -554,8 +556,10 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
 
   const updateRAN=(reportId)=>runPipeline(
     '/reports/update/'+patientId+'/'+reportId,
-    r=>'RAN v'+r.version+' atualizado! '+r.novos_documentos+' novo(s) doc(s). Score: '+(r.score_qualidade||'—')+'/100'+(r.custo_usd?' · $'+r.custo_usd.toFixed(3)+' USD':'')
+    r=>'RAN v'+r.version+' atualizado! '+r.novos_documentos+' novo(s) doc(s).'+(r.custo_usd?' · $'+r.custo_usd.toFixed(3)+' USD':'')
   );
+
+  const importarRAN=()=>importRanRef.current?.click();
 
   const deleteReport=async(reportId)=>{
     try{await apiFetch('/reports/'+patientId+'/'+reportId,{method:'DELETE'});load();setToast({message:'Relatório removido',type:'success'})}
@@ -597,21 +601,38 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
           </div>
         </Card>
 
-        {/* Pipeline em progresso */}
-        {generating&&<div style={{marginBottom:12}}><PipelineProgress stage={pipelineStage} message={pipelineMsg}/></div>}
+        <input ref={importRanRef} type="file" accept=".docx" style={{display:'none'}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reportBase=reports.find(r=>Number.isInteger(Number(r.version))||!String(r.version).includes('.'));if(!reportBase)return setToast({message:'Nenhum relatório base encontrado',type:'error'});const fd=new FormData();fd.append('file',file);setGenerating(true);setPipelineStage('analitico');setPipelineMsg('Importando e normalizando...');apiUpload('/reports/'+patientId+'/'+reportBase.id+'/import-edited',fd).then(()=>{setToast({message:'Relatório importado com sucesso!',type:'success'});load();}).catch(e=>setToast({message:e.message,type:'error'})).finally(()=>{setGenerating(false);setPipelineStage(null);setPipelineMsg('');});}}/>
 
         {generating?(
           <div style={{marginBottom:16}}>
-            <Btn disabled full icon="⏳">Gerando...</Btn>
+            <div style={{background:V.white,borderRadius:14,padding:'16px 20px',border:'1px solid '+V.sand2}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                <span style={{fontSize:13,fontWeight:600,color:V.ink}}>{pipelineMsg||'Gerando...'}</span>
+                <span style={{fontSize:12,color:V.ink3}}>{pipelineStage==='analitico'?'25%':pipelineStage==='redator'?'65%':pipelineStage==='revisor'?'85%':pipelineStage==='done'?'100%':'5%'}</span>
+              </div>
+              <div style={{height:8,background:V.sand2,borderRadius:4,overflow:'hidden'}}>
+                <div style={{height:'100%',background:V.forest,borderRadius:4,transition:'width 1s ease',width:pipelineStage==='analitico'?'25%':pipelineStage==='redator'?'65%':pipelineStage==='revisor'?'85%':pipelineStage==='done'?'100%':'5%'}}/>
+              </div>
+            </div>
           </div>
         ):(
           <div style={{marginBottom:16}}>
             {reports.length===0?(
               <Btn onClick={generateRAN} full icon="🤖">Gerar Relatório RAN</Btn>
             ):(
-              <Btn onClick={()=>{if(confirm('Atualizar RAN com novos documentos?\nCusto estimado: ~$0.28 USD'))updateRAN(reports[0].id)}} full icon="🔄">Atualizar RAN</Btn>
+              <div style={{display:'flex',gap:8}}>
+                <Btn onClick={generateRAN} full icon="🤖" variant="secondary">Gerar novo RAN</Btn>
+                <div style={{position:'relative',flex:1}}>
+                  <Btn onClick={()=>setShowAtualizarMenu(m=>!m)} full icon="🔄">Atualizar RAN ▼</Btn>
+                  {showAtualizarMenu&&<div style={{position:'absolute',top:'100%',left:0,right:0,marginTop:4,background:V.white,borderRadius:12,border:'1px solid '+V.sand2,boxShadow:'0 4px 16px rgba(0,0,0,0.12)',zIndex:100,overflow:'hidden'}}>
+                    <button onClick={()=>{setShowAtualizarMenu(false);importarRAN();}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'12px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',textAlign:'left'}}><span>⬆</span><div><div style={{fontWeight:600}}>Importar DOCX editado</div><div style={{fontSize:11,color:V.ink3,marginTop:2}}>Relatório que você editou no Word</div></div></button>
+                    <div style={{height:1,background:V.sand2}}/>
+                    <button onClick={()=>{setShowAtualizarMenu(false);if(confirm('Atualizar RAN com novos documentos?\nCusto estimado: ~$0.28 USD'))updateRAN(reports.find(r=>Number.isInteger(Number(r.version))||!String(r.version).includes('.'))?.id||reports[0].id);}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'12px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',textAlign:'left'}}><span>🔍</span><div><div style={{fontWeight:600}}>Analisar novos arquivos</div><div style={{fontSize:11,color:V.ink3,marginTop:2}}>Sistema analisa documentos novos</div></div></button>
+                  </div>}
+                </div>
+              </div>
             )}
-            {!patient.ready_for_ran&&<div style={{padding:'8px 12px',background:'#fff3cd',borderRadius:6,fontSize:13,color:'#856404'}}>⚠ Dados incompletos para gerar RAN completo</div>}
+            {!patient.ready_for_ran&&<div style={{padding:'8px 12px',background:'#fff3cd',borderRadius:6,fontSize:13,color:'#856404',marginTop:8}}>⚠ Dados incompletos para gerar RAN completo</div>}
           </div>
         )}
 
@@ -801,8 +822,6 @@ function ReportViewPage({reportId,patientId,onBack}){
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[showDownloadMenu,setShowDownloadMenu]=useState(false);
   const[blocos,setBlocos]=useState(null);
   const[feedbacks,setFeedbacks]=useState({});
-  const[importing,setImporting]=useState(false);
-  const importRef=useRef(null);
 
   useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setBlocos(parseBlocks(r.content_md));}).catch(console.error).finally(()=>setLoading(false));apiFetch('/reports/'+patientId+'/'+reportId+'/feedback').then(setFeedbacks).catch(()=>{});},[reportId,patientId]);
 
@@ -812,7 +831,6 @@ function ReportViewPage({reportId,patientId,onBack}){
   const sendFeedback=async(bId,bHeading,bContent,fType)=>{const prev=feedbacks[bId];setFeedbacks(f=>({...f,[bId]:fType}));try{await apiFetch('/reports/'+patientId+'/'+reportId+'/feedback',{method:'POST',body:JSON.stringify({bloco_id:bId,bloco_heading:bHeading,feedback_type:fType,bloco_content:bContent})});}catch(e){setFeedbacks(f=>({...f,[bId]:prev}));setToast({message:'Erro ao salvar feedback: '+e.message,type:'error'});setTimeout(()=>setToast(null),3000);}};
 
   const baixar=async(tipo)=>{setShowDownloadMenu(false);try{const token=localStorage.getItem('nexum_token');const res=await fetch('/api/reports/'+patientId+'/'+reportId+'/'+tipo,{headers:{Authorization:'Bearer '+token}});if(!res.ok)throw new Error('HTTP '+res.status);const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='RAN_v'+rpt.version+'.'+tipo;a.click();URL.revokeObjectURL(url);}catch(e){setToast({message:'Erro ao baixar: '+e.message,type:'error'});}};
-  const importarDocx=async(file)=>{if(!file)return;if(!file.name.endsWith('.docx'))return setToast({message:'Apenas arquivos .docx são aceitos',type:'error'});setImporting(true);try{const fd=new FormData();fd.append('file',file);await apiUpload('/reports/'+patientId+'/'+reportId+'/import-edited',fd);setToast({message:'Relatório importado! Padrões sendo extraídos em background.',type:'success'});setTimeout(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);setBlocos(parseBlocks(r.content_md));});},1500);}catch(e){setToast({message:e.message,type:'error'});}finally{setImporting(false);}};
 
   if(loading)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Relatório" onBack={onBack}/><Spinner text="Carregando relatório..."/></div>;
   if(!rpt)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>;
@@ -832,8 +850,6 @@ function ReportViewPage({reportId,patientId,onBack}){
               <button onClick={()=>baixar('pdf')} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'10px 12px',borderRadius:8,border:'none',background:'none',cursor:'pointer',fontSize:13,color:V.ink,fontFamily:'inherit',fontWeight:500}}>📋 PDF</button>
             </div>}
           </div>
-          <input ref={importRef} type="file" accept=".docx" style={{display:'none'}} onChange={e=>importarDocx(e.target.files[0])}/>
-          <button onClick={()=>importRef.current?.click()} disabled={importing} title="Importar DOCX editado" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',opacity:importing?.6:1}}>{importing?'Importando...':'⬆ Importar DOCX'}</button>
         </div>
       }/>
 

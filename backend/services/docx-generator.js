@@ -87,7 +87,7 @@ function tituloSecao(texto) {
   const limpo = texto.replace(/\*\*/g, '').replace(/^#+\s*/, '').trim();
   return new Paragraph({
     heading: HeadingLevel.HEADING_1,
-    spacing: { before: 280, after: 80 },
+    spacing: { before: 280, after: 80, line: 360, lineRule: 'auto' },
     border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: VERDE, space: 4 } },
     children: [new TextRun({
       text: limpo.toUpperCase(), bold: true, size: 22,
@@ -100,7 +100,7 @@ function subTitulo(texto) {
   const limpo = texto.replace(/\*\*/g, '').replace(/^#+\s*/, '').trim();
   return new Paragraph({
     heading: HeadingLevel.HEADING_2,
-    spacing: { before: 160, after: 40 },
+    spacing: { before: 160, after: 40, line: 360, lineRule: 'auto' },
     children: [new TextRun({
       text: limpo, bold: true, size: 20,
       color: '2C3828', font: 'Arial'
@@ -112,7 +112,7 @@ function subSubTitulo(texto) {
   const limpo = texto.replace(/\*\*/g, '').replace(/^#+\s*/, '').trim();
   return new Paragraph({
     heading: HeadingLevel.HEADING_3,
-    spacing: { before: 100, after: 30 },
+    spacing: { before: 100, after: 30, line: 360, lineRule: 'auto' },
     children: [new TextRun({
       text: limpo, bold: true, italics: true, size: 20,
       color: '2C3828', font: 'Arial'
@@ -124,7 +124,7 @@ function parágrafoTexto(texto, opcoes = {}) {
   texto = texto.replace(/\n(?!\n)/g, ' ').trim();
   const runs = processarInline(texto, opcoes);
   return new Paragraph({
-    spacing: { before: 40, after: 40 },
+    spacing: { before: 40, after: 40, line: 360, lineRule: 'auto' },
     alignment: opcoes.center ? AlignmentType.CENTER : AlignmentType.JUSTIFIED,
     children: runs
   });

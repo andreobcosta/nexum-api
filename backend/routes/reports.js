@@ -449,9 +449,16 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     const reportContent = ranResult.relatorio;
     const ranMeta = { diff: ranResult.diff, revisao: ranResult.revisao, elapsed_seconds: ranResult.elapsed_seconds, updated_from: req.params.report_id };
 
-    // Cria nova versão
+    // Subversão: usa version do relatório base (ex: 1 → 1.1, 1.1 → 1.2)
+    const baseVersion = reportExistente.version || 1;
+    const baseInt = parseInt(String(baseVersion).split('.')[0]);
     const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
-    const version = reportsSnap.size + 1;
+    const subversoes = reportsSnap.docs.filter(d => {
+      const v = String(d.data().version || '');
+      return v.startsWith(baseInt + '.') || v === String(baseInt);
+    });
+    const proximaSub = subversoes.length;
+    const version = baseInt + '.' + proximaSub;
     const reportId = uuidv4();
     const now = new Date().toISOString();
 
@@ -730,9 +737,18 @@ router.post('/:patient_id/:report_id/import-edited',
         /^QUEIXA PRINCIPAL/im
       ];
       let corpoEditado = textoEditado;
+      let conteudoEntreCabecalhoEQueixa = '';
       for (const marcador of marcadoresCorpo) {
         const match = textoEditado.search(marcador);
-        if (match !== -1) { corpoEditado = textoEditado.slice(match); break; }
+        if (match !== -1) {
+          const inicioDocx = textoEditado.search(/^#+\s*.+/m);
+          if (inicioDocx !== -1 && inicioDocx < match) {
+            const blocoIntermediario = textoEditado.slice(inicioDocx, match).trim();
+            if (blocoIntermediario.length > 10) conteudoEntreCabecalhoEQueixa = blocoIntermediario;
+          }
+          corpoEditado = textoEditado.slice(match);
+          break;
+        }
       }
 
       let cabecalhoOriginal = '';
@@ -743,16 +759,36 @@ router.post('/:patient_id/:report_id/import-edited',
       }
 
       const conteudoFinal = cabecalhoOriginal
-        ? cabecalhoOriginal.trimEnd() + '\n\n' + corpoEditado
+        ? cabecalhoOriginal.trimEnd() + '\n\n' +
+          (conteudoEntreCabecalhoEQueixa ? conteudoEntreCabecalhoEQueixa + '\n\n' : '') +
+          corpoEditado
         : corpoEditado;
 
+      const baseVersion = report.version || 1;
+      const baseInt = parseInt(String(baseVersion).split('.')[0]);
+      const reportsSnap = await db.collection('patients').doc(patient_id).collection('reports').get();
+      const subversoes = reportsSnap.docs.filter(d => {
+        const v = String(d.data().version || '');
+        return v.startsWith(baseInt + '.') || v === String(baseInt);
+      });
+      const proximaSub = subversoes.length;
+      const novaVersion = baseInt + '.' + proximaSub;
+      const novoReportId = require('uuid').v4();
+
       const now = new Date().toISOString();
-      await reportRef.update({
+      await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).set({
+        patient_id,
+        version: novaVersion,
         content_md: conteudoFinal,
         status: 'imported',
         imported_at: now,
         imported_from: req.file.originalname,
-        sync_source: 'import'
+        sync_source: 'import',
+        generated_at: now,
+        base_version: baseVersion,
+        drive_file_id: report.drive_file_id || null,
+        drive_is_google_doc: report.drive_is_google_doc || false,
+        ran_meta: report.ran_meta || null
       });
 
       fs.unlinkSync(req.file.path);
@@ -765,7 +801,7 @@ router.post('/:patient_id/:report_id/import-edited',
           await claude.extrairPadroesDoRelatorio({
             db,
             patient_id,
-            report_id,
+            report_id: novoReportId,
             textoOriginal: report.content_md || '',
             textoEditado: conteudoFinal,
             userEmail: req.user?.email || 'default'
