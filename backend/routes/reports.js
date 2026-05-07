@@ -741,11 +741,22 @@ router.post('/:patient_id/:report_id/import-edited',
       for (const marcador of marcadoresCorpo) {
         const match = textoEditado.search(marcador);
         if (match !== -1) {
-          const inicioDocx = textoEditado.search(/^#+\s*.+/m);
-          if (inicioDocx !== -1 && inicioDocx < match) {
-            const blocoIntermediario = textoEditado.slice(inicioDocx, match).trim();
-            if (blocoIntermediario.length > 10) conteudoEntreCabecalhoEQueixa = blocoIntermediario;
+          const CAMPOS_CABECALHO = [
+            /^nome/i, /^data de nasc/i, /^idade/i, /^escolaridade/i,
+            /^dominância/i, /^dominancia/i, /^medicamento/i, /^responsável/i,
+            /^responsavel/i, /^faz uso/i, /^RAN\s*-/i, /^RELATÓRIO/i,
+            /^Patrízia/i, /^Patrizia/i
+          ];
+          const linhasDocx = textoEditado.split('\n');
+          let fimCabecalhoImportado = 0;
+          for (let i = 0; i < Math.min(linhasDocx.length, 20); i++) {
+            const l = linhasDocx[i].trim();
+            if (!l) continue;
+            if (CAMPOS_CABECALHO.some(re => re.test(l))) fimCabecalhoImportado = i + 1;
           }
+          const linhasAteQueixa = textoEditado.slice(0, match).split('\n').length;
+          const blocoIntermediario = linhasDocx.slice(fimCabecalhoImportado, linhasAteQueixa).join('\n').trim();
+          if (blocoIntermediario.length > 10) conteudoEntreCabecalhoEQueixa = blocoIntermediario;
           corpoEditado = textoEditado.slice(match);
           break;
         }

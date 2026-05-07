@@ -605,13 +605,14 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
 
         {generating?(
           <div style={{marginBottom:16}}>
-            <div style={{background:V.white,borderRadius:14,padding:'16px 20px',border:'1px solid '+V.sand2}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                <span style={{fontSize:13,fontWeight:600,color:V.ink}}>{pipelineMsg||'Gerando...'}</span>
-                <span style={{fontSize:12,color:V.ink3}}>{pipelineStage==='analitico'?'25%':pipelineStage==='redator'?'65%':pipelineStage==='revisor'?'85%':pipelineStage==='done'?'100%':'5%'}</span>
+            <PipelineProgress stage={pipelineStage} message={pipelineMsg}/>
+            <div style={{background:V.white,borderRadius:10,padding:'10px 16px',border:'1px solid '+V.sand2,marginTop:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:12,color:V.ink3}}>{pipelineMsg||'Iniciando...'}</span>
+                <span style={{fontSize:12,fontWeight:600,color:V.forest}}>{pipelineStage==='analitico'?'35%':pipelineStage==='redator'?'70%':pipelineStage==='revisor'?'90%':pipelineStage==='done'?'100%':'5%'}</span>
               </div>
-              <div style={{height:8,background:V.sand2,borderRadius:4,overflow:'hidden'}}>
-                <div style={{height:'100%',background:V.forest,borderRadius:4,transition:'width 1s ease',width:pipelineStage==='analitico'?'25%':pipelineStage==='redator'?'65%':pipelineStage==='revisor'?'85%':pipelineStage==='done'?'100%':'5%'}}/>
+              <div style={{height:4,background:V.sand2,borderRadius:2,overflow:'hidden'}}>
+                <div style={{height:'100%',background:V.forest,borderRadius:2,transition:'width 1s ease',width:pipelineStage==='analitico'?'35%':pipelineStage==='redator'?'70%':pipelineStage==='revisor'?'90%':pipelineStage==='done'?'100%':'5%'}}/>
               </div>
             </div>
           </div>
@@ -621,7 +622,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
               <Btn onClick={generateRAN} full icon="🤖">Gerar Relatório RAN</Btn>
             ):(
               <div style={{display:'flex',gap:8}}>
-                <Btn onClick={generateRAN} full icon="🤖" variant="secondary">Gerar novo RAN</Btn>
+                <div style={{flex:1}}><Btn onClick={generateRAN} full icon="🤖" variant="secondary">Gerar novo RAN</Btn></div>
                 <div style={{position:'relative',flex:1}}>
                   <Btn onClick={()=>setShowAtualizarMenu(m=>!m)} full icon="🔄">Atualizar RAN ▼</Btn>
                   {showAtualizarMenu&&<div style={{position:'absolute',top:'100%',left:0,right:0,marginTop:4,background:V.white,borderRadius:12,border:'1px solid '+V.sand2,boxShadow:'0 4px 16px rgba(0,0,0,0.12)',zIndex:100,overflow:'hidden'}}>

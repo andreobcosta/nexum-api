@@ -403,8 +403,30 @@ function gerarBlocoIdentificacao(linhasSecao1) {
   };
 
   const nome = campo('Nome da Criança') || campo('Nome');
-  const nascimento = campo('Data de Nascimento') || campo('Nascimento');
-  const idade = campo('Idade');
+  let nascimento = '[Não informado]';
+  let idade = '[Não informado]';
+  const linhaNasc = linhasSecao1.find(l =>
+    l.includes('Data de Nascimento') || l.includes('Data de nascimento') || l.includes('Nascimento')
+  );
+  if (linhaNasc) {
+    const valor = linhaNasc.split(':').slice(1).join(':').trim().replace(/\*\*/g,'').trim();
+    if (valor.includes('|')) {
+      const partes = valor.split('|').map(p => p.trim());
+      nascimento = partes[0].replace(/Idade:.*/i,'').trim() || '[Não informado]';
+      idade = partes[1]?.replace(/Idade:/i,'').trim() || '[Não informado]';
+    } else {
+      nascimento = valor || '[Não informado]';
+    }
+  }
+  if (idade === '[Não informado]') {
+    const linhaIdade = linhasSecao1.find(l =>
+      l.match(/^Idade:/i) || (l.includes('Idade:') && !l.includes('Nascimento'))
+    );
+    if (linhaIdade) {
+      idade = linhaIdade.split(':').slice(1).join(':').trim()
+        .replace(/\*\*/g,'').replace(/\[.*?\]/g,'').trim() || '[Não informado]';
+    }
+  }
   const escolaridade = campo('Escolaridade');
   const dominancia = campo('Dominância');
   const medicamentos = campo('medicamentos') || campo('Medicamentos');
