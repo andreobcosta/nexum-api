@@ -393,6 +393,40 @@ function parsearMarkdown(md) {
 
 // ── Bloco de cabeçalho estruturado (dados do paciente) ────────────────────
 
+function gerarBlocoIdentificacaoDireto(p) {
+  const fmt = (v) => v ? String(v).trim() : '[Não informado]';
+  const borderConfig = { style: BorderStyle.SINGLE, size: 4, color: BORDA };
+  const borders = { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig };
+  const linha = (label, valor) => new TableRow({
+    children: [
+      new TableCell({
+        borders, width: { size: 2800, type: WidthType.DXA },
+        margins: { top: 80, bottom: 80, left: 160, right: 80 },
+        shading: { fill: 'F3F0EB', type: ShadingType.CLEAR },
+        children: [new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 20, color: VERDE, font: 'Arial' })] })]
+      }),
+      new TableCell({
+        borders, width: { size: 6226, type: WidthType.DXA },
+        margins: { top: 80, bottom: 80, left: 160, right: 80 },
+        children: [new Paragraph({ children: [new TextRun({ text: valor, size: 20, font: 'Arial', color: '2C2C2A' })] })]
+      })
+    ]
+  });
+  return new Table({
+    width: { size: LARGURA_CONTEUDO, type: WidthType.DXA },
+    columnWidths: [2800, 6226],
+    layout: TableLayoutType.FIXED,
+    rows: [
+      linha('Nome completo', fmt(p.full_name)),
+      linha('Data de nascimento / Idade', fmt(p.birth_date) + '  |  ' + fmt(p.age ? p.age + ' anos' : null)),
+      linha('Escolaridade', fmt(p.grade)),
+      linha('Dominância manual', fmt(p.handedness)),
+      linha('Medicamentos', fmt(p.medications)),
+      linha('Responsáveis', fmt(p.guardians)),
+    ]
+  });
+}
+
 function gerarBlocoIdentificacao(linhasSecao1) {
   // Extrai dados do cabeçalho da seção 1
   const campo = (label) => {
@@ -468,7 +502,7 @@ function gerarBlocoIdentificacao(linhasSecao1) {
 
 // ── Função principal exportada ─────────────────────────────────────────────
 
-async function gerarDocx(contentMd, nomeArquivo, userEmail) {
+async function gerarDocx(contentMd, nomeArquivo, userEmail, paciente = null) {
   let layout = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null, logo_base64: null };
   let logoBuffer = null;
   try {
@@ -485,13 +519,17 @@ async function gerarDocx(contentMd, nomeArquivo, userEmail) {
   _fonte = layout.fonte;
   _tamanho = layout.tamanho;
 
-  // Separa seção 1 (cabeçalho) do resto
+  // Monta bloco de identificação
+  let blocoId;
   const linhas = contentMd.split('\n');
   const inicioSecao2 = linhas.findIndex(l => l.startsWith('## ') && !l.includes('RELATÓRIO'));
-  const linhasSecao1 = inicioSecao2 > 0 ? linhas.slice(0, inicioSecao2) : linhas.slice(0, 15);
   const restoMd = inicioSecao2 > 0 ? linhas.slice(inicioSecao2).join('\n') : contentMd;
-
-  const blocoId = gerarBlocoIdentificacao(linhasSecao1);
+  if (paciente) {
+    blocoId = gerarBlocoIdentificacaoDireto(paciente);
+  } else {
+    const linhasSecao1 = inicioSecao2 > 0 ? linhas.slice(0, inicioSecao2) : linhas.slice(0, 15);
+    blocoId = gerarBlocoIdentificacao(linhasSecao1);
+  }
   const conteudo = parsearMarkdown(restoMd);
 
   const doc = new Document({

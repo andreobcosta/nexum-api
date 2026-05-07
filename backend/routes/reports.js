@@ -562,7 +562,9 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
     if (!buffer) {
       console.log('[DOCX] Gerando DOCX local a partir do Markdown');
       const { gerarDocx } = require('../services/docx-generator');
-      buffer = await gerarDocx(report.content_md || '', report.patient_id, req.user.email);
+      const patientDoc = await db.collection('patients').doc(report.patient_id).get();
+      const pacienteData = patientDoc.exists ? patientDoc.data() : null;
+      buffer = await gerarDocx(report.content_md || '', report.patient_id, req.user.email, pacienteData);
     }
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
