@@ -734,29 +734,38 @@ router.post('/:patient_id/:report_id/import-edited',
       }
 
       // Extrair dados do cabeçalho do DOCX importado e atualizar paciente
+      // O DOCX tem label no parágrafo N e valor no parágrafo N+1
       try {
-        const linhasImport = textoEditado.split('\n').slice(0, 30);
+        const linhasImport = textoEditado.split('\n').slice(0, 40).map(l => l.trim()).filter(l => l);
         const extrairCampo = (labels) => {
-          for (const label of labels) {
-            const linha = linhasImport.find(l => l.toLowerCase().includes(label.toLowerCase() + ':'));
-            if (linha) {
-              const val = linha.split(':').slice(1).join(':').trim().replace(/\*\*/g,'').trim();
-              if (val && val.length > 0) return val;
+          for (let i = 0; i < linhasImport.length - 1; i++) {
+            const l = linhasImport[i].toLowerCase().replace(/\*\*/g,'').trim();
+            for (const label of labels) {
+              if (l === label.toLowerCase() || l.startsWith(label.toLowerCase())) {
+                const val = linhasImport[i+1].replace(/\*\*/g,'').trim();
+                if (val && val.length > 0 && !val.match(/^\[/)) return val;
+              }
             }
           }
           return null;
         };
         const nome = extrairCampo(['Nome da Criança','Nome completo','Nome']);
-        const nascimento = extrairCampo(['Data de Nascimento','Data de nascimento','Nascimento']);
         const escolaridade = extrairCampo(['Escolaridade']);
         const dominancia = extrairCampo(['Dominância manual','Dominancia manual','Dominância','Dominancia']);
         const medicamentos = extrairCampo(['Faz uso de medicamentos','Medicamentos']);
         const responsaveis = extrairCampo(['Responsáveis','Responsaveis']);
-        const linhaData = linhasImport.find(l => l.toLowerCase().includes('data de nascimento') || l.toLowerCase().includes('nascimento:'));
+        let nascimento = null;
         let idadeImport = null;
-        if (linhaData && linhaData.includes('|')) {
-          const partes = linhaData.split('|');
-          if (partes[1]) idadeImport = partes[1].replace(/idade:/i,'').replace(/\*\*/g,'').trim();
+        const idxData = linhasImport.findIndex(l => l.toLowerCase().includes('data de nascimento') || l.toLowerCase() === 'nascimento');
+        if (idxData !== -1 && linhasImport[idxData+1]) {
+          const valData = linhasImport[idxData+1].trim();
+          if (valData.includes('|')) {
+            const partes = valData.split('|').map(p => p.trim());
+            nascimento = partes[0].trim();
+            idadeImport = partes[1]?.replace(/idade:/i,'').trim() || null;
+          } else {
+            nascimento = valData;
+          }
         }
         const patientRef = db.collection('patients').doc(patient_id);
         const patientSnap = await patientRef.get();
@@ -766,7 +775,7 @@ router.post('/:patient_id/:report_id/import-edited',
           if (!pd.full_name && nome) updates.full_name = nome;
           if (!pd.birth_date && nascimento) {
             const partes = nascimento.split('/');
-            if (partes.length === 3) updates.birth_date = partes[2]+'-'+partes[1]+'-'+partes[0];
+            if (partes.length === 3) updates.birth_date = partes[2]+'-'+partes[1].padStart(2,'0')+'-'+partes[0].padStart(2,'0');
             else updates.birth_date = nascimento;
           }
           if (!pd.grade && escolaridade) updates.grade = escolaridade;
@@ -780,11 +789,11 @@ router.post('/:patient_id/:report_id/import-edited',
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date().toISOString();
             await patientRef.update(updates);
-            console.log('[ImportEdit] Paciente atualizado com dados do cabeçalho:', Object.keys(updates));
+            console.log('[ImportEdit] Paciente atualizado:', Object.keys(updates));
           }
         }
       } catch (cabErr) {
-        console.warn('[ImportEdit] Erro ao extrair cabeçalho para paciente:', cabErr.message);
+        console.warn('[ImportEdit] Erro ao extrair cabeçalho:', cabErr.message);
       }
 
       const marcadoresCorpo = [
