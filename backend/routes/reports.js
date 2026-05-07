@@ -733,6 +733,37 @@ router.post('/:patient_id/:report_id/import-edited',
       const patientDoc = await db.collection('patients').doc(patient_id).get();
       const patientInfo = patientDoc.exists ? patientDoc.data() : {};
 
+      // Limpar campos do paciente que contêm dados de outros campos
+      // (sinal de que o cabeçalho foi importado de forma corrompida)
+      const OUTROS_CAMPOS = ['medicamento', 'responsável', 'responsavel',
+        'faz uso', 'escolaridade', 'nome', 'data de nasc'];
+      const campoCorrompido = (val) => {
+        if (!val) return false;
+        const v = val.toLowerCase();
+        return OUTROS_CAMPOS.some(c => v.includes(c));
+      };
+      if (campoCorrompido(patientInfo.handedness)) {
+        patientInfo.handedness = null;
+        await db.collection('patients').doc(patient_id).update({
+          handedness: null, updated_at: new Date().toISOString()
+        });
+        console.log('[ImportEdit] handedness corrompido — limpo');
+      }
+      if (campoCorrompido(patientInfo.guardians)) {
+        patientInfo.guardians = null;
+        await db.collection('patients').doc(patient_id).update({
+          guardians: null, updated_at: new Date().toISOString()
+        });
+        console.log('[ImportEdit] guardians corrompido — limpo');
+      }
+      if (campoCorrompido(patientInfo.medications)) {
+        patientInfo.medications = null;
+        await db.collection('patients').doc(patient_id).update({
+          medications: null, updated_at: new Date().toISOString()
+        });
+        console.log('[ImportEdit] medications corrompido — limpo');
+      }
+
       // Calcular versão X.Y
       const baseVersion = report.version || 1;
       const baseInt = parseInt(String(baseVersion).split('.')[0]);

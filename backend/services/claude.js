@@ -689,7 +689,7 @@ DADOS DO PACIENTE (use estes dados no cabeçalho — não os do texto importado)
 - Responsáveis: ${patientInfo.guardians || '[NÃO INFORMADO]'}
 
 TEXTO IMPORTADO:
-${textoImportado.slice(0, 12000)}
+${textoImportado.slice(0, 40000)}
 
 INSTRUÇÕES:
 1. Reescreva o relatório COMPLETO seguindo a estrutura do sistema (12 seções obrigatórias)
