@@ -673,10 +673,54 @@ Regras críticas:
   console.log(`[Padroes] ${padroes.length} padrão(ões) processado(s) para ${userEmail}`);
 }
 
+async function normalizarRAN(textoImportado, patientInfo) {
+  const systemPromptRAN = await getSystemPrompt();
+
+  const userMessage = `Você recebeu um relatório neuropsicopedagógico importado de outro sistema.
+O texto pode ter formatação diferente, seções fora de ordem, ou estrutura não padronizada.
+
+DADOS DO PACIENTE (use estes dados no cabeçalho — não os do texto importado):
+- Nome: ${patientInfo.full_name || '[NÃO INFORMADO]'}
+- Data de nascimento: ${patientInfo.birth_date || '[NÃO INFORMADO]'}
+- Idade: ${patientInfo.age || '[NÃO INFORMADO]'} anos
+- Escolaridade: ${patientInfo.grade || '[NÃO INFORMADO]'}
+- Dominância manual: ${patientInfo.handedness || '[NÃO INFORMADO]'}
+- Medicamentos: ${patientInfo.medications || 'Nenhum informado'}
+- Responsáveis: ${patientInfo.guardians || '[NÃO INFORMADO]'}
+
+TEXTO IMPORTADO:
+${textoImportado.slice(0, 12000)}
+
+INSTRUÇÕES:
+1. Reescreva o relatório COMPLETO seguindo EXATAMENTE a estrutura do sistema (12 seções obrigatórias)
+2. Preserve TODO o conteúdo clínico — não invente dados, não omita informações
+3. Se uma seção do texto importado não corresponder a uma seção padrão, crie uma nova seção com título adequado
+4. Use os DADOS DO PACIENTE acima para o cabeçalho — ignore o cabeçalho do texto importado
+5. Mantenha o tom e linguagem clínica do texto original
+6. Retorne APENAS o Markdown do relatório, sem comentários adicionais
+Data: ${new Date().toLocaleDateString('pt-BR')}. Local: Uberlândia-MG.`;
+
+  const { text, usage } = await callClaude(
+    [{ type: 'text', text: systemPromptRAN, cache_control: { type: 'ephemeral' } }],
+    userMessage,
+    16000,
+    MODEL_SONNET
+  );
+
+  const custos = {
+    input_tokens: usage?.input_tokens || 0,
+    output_tokens: usage?.output_tokens || 0,
+    total_usd: ((usage?.input_tokens || 0) * 3 / 1000000) + ((usage?.output_tokens || 0) * 15 / 1000000)
+  };
+
+  return { relatorio: text, custos };
+}
+
 module.exports = {
   callClaude: async (sp, um, mt, m) => (await callClaude(sp, um, mt, m)).text,
   generateRAN,
   updateRAN,
   getSystemPrompt,
-  extrairPadroesDoRelatorio
+  extrairPadroesDoRelatorio,
+  normalizarRAN
 };

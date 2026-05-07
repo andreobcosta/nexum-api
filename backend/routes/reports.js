@@ -683,10 +683,10 @@ router.patch('/:patient_id/:report_id', async (req, res) => {
 });
 
 // POST /api/reports/:patient_id/:report_id/import-edited
-// Recebe DOCX editado pelo cliente, extrai texto, salva como nova versão
-// e dispara extração de padrões profissionais em background
+// Recebe DOCX editado pelo cliente, normaliza via Claude e salva como nova versão
 router.post('/:patient_id/:report_id/import-edited',
-  require('multer')({ dest: require('path').join(__dirname,'../temp'), limits:{ fileSize: 20*1024*1024 } }).single('file'),
+  require('multer')({ dest: require('path').join(__dirname,'../temp'),
+    limits:{ fileSize: 20*1024*1024 } }).single('file'),
   async (req, res) => {
     try {
       const db = getDb();
@@ -701,12 +701,13 @@ router.post('/:patient_id/:report_id/import-edited',
       if (!reportDoc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
       const report = reportDoc.data();
 
+      // Extrair texto do DOCX
       const mammoth = require('mammoth');
       const fs = require('fs');
       const docxBuffer = fs.readFileSync(req.file.path);
       const htmlResult = await mammoth.convertToHtml({ buffer: docxBuffer });
       const html = htmlResult.value;
-      const textoEditado = html
+      const textoImportado = html
         .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
         .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
         .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
@@ -714,132 +715,25 @@ router.post('/:patient_id/:report_id/import-edited',
         .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
         .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
         .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
-        .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
         .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
         .replace(/<tr[^>]*>(.*?)<\/tr>/gis, (_,cells)=>{ const cols=cells.match(/<t[dh][^>]*>(.*?)<\/t[dh]>/gis)||[]; return '| '+cols.map(c=>c.replace(/<[^>]+>/g,'').trim()).join(' | ')+' |\n'; })
         .replace(/<[^>]+>/g, '')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&quot;/g, '"')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/\*{3,}/g, '')
-        .trim();
-      if (!textoEditado || textoEditado.length < 100) {
+        .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"')
+        .replace(/\*{3,}/g,'').replace(/\n{3,}/g,'\n\n').trim();
+
+      if (!textoImportado || textoImportado.length < 100) {
         fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'DOCX sem conteúdo legível' });
       }
+      fs.unlinkSync(req.file.path);
 
-      // Extrair dados do cabeçalho do DOCX importado e atualizar paciente
-      // O DOCX tem label no parágrafo N e valor no parágrafo N+1
-      try {
-        const linhasImport = textoEditado.split('\n').slice(0, 40).map(l => l.trim()).filter(l => l);
-        const extrairCampo = (labels) => {
-          for (let i = 0; i < linhasImport.length - 1; i++) {
-            const l = linhasImport[i].toLowerCase().replace(/\*\*/g,'').trim();
-            for (const label of labels) {
-              if (l === label.toLowerCase() || l.startsWith(label.toLowerCase())) {
-                const val = linhasImport[i+1].replace(/\*\*/g,'').trim();
-                if (val && val.length > 0 && !val.match(/^\[/)) return val;
-              }
-            }
-          }
-          return null;
-        };
-        const nome = extrairCampo(['Nome da Criança','Nome completo','Nome']);
-        const escolaridade = extrairCampo(['Escolaridade']);
-        const dominancia = extrairCampo(['Dominância manual','Dominancia manual','Dominância','Dominancia']);
-        const medicamentos = extrairCampo(['Faz uso de medicamentos','Medicamentos']);
-        const responsaveis = extrairCampo(['Responsáveis','Responsaveis']);
-        let nascimento = null;
-        let idadeImport = null;
-        const idxData = linhasImport.findIndex(l => l.toLowerCase().includes('data de nascimento') || l.toLowerCase() === 'nascimento');
-        if (idxData !== -1 && linhasImport[idxData+1]) {
-          const valData = linhasImport[idxData+1].trim();
-          if (valData.includes('|')) {
-            const partes = valData.split('|').map(p => p.trim());
-            nascimento = partes[0].trim();
-            idadeImport = partes[1]?.replace(/idade:/i,'').trim() || null;
-          } else {
-            nascimento = valData;
-          }
-        }
-        const patientRef = db.collection('patients').doc(patient_id);
-        const patientSnap = await patientRef.get();
-        if (patientSnap.exists) {
-          const pd = patientSnap.data();
-          const updates = {};
-          if (!pd.full_name && nome) updates.full_name = nome;
-          if (!pd.birth_date && nascimento) {
-            const partes = nascimento.split('/');
-            if (partes.length === 3) updates.birth_date = partes[2]+'-'+partes[1].padStart(2,'0')+'-'+partes[0].padStart(2,'0');
-            else updates.birth_date = nascimento;
-          }
-          if (!pd.grade && escolaridade) updates.grade = escolaridade;
-          if ((!pd.handedness || pd.handedness === 'Nao informado' || pd.handedness === 'Não informado') && dominancia) updates.handedness = dominancia;
-          if (!pd.medications && medicamentos) updates.medications = medicamentos;
-          if (!pd.guardians && responsaveis) updates.guardians = responsaveis;
-          if (!pd.age && idadeImport) {
-            const ageNum = parseInt(idadeImport);
-            if (!isNaN(ageNum)) updates.age = ageNum;
-          }
-          if (Object.keys(updates).length > 0) {
-            updates.updated_at = new Date().toISOString();
-            await patientRef.update(updates);
-            console.log('[ImportEdit] Paciente atualizado:', Object.keys(updates));
-          }
-        }
-      } catch (cabErr) {
-        console.warn('[ImportEdit] Erro ao extrair cabeçalho:', cabErr.message);
-      }
+      // Buscar dados do paciente
+      const patientDoc = await db.collection('patients').doc(patient_id).get();
+      const patientInfo = patientDoc.exists ? patientDoc.data() : {};
 
-      const marcadoresCorpo = [
-        /^#+\s*QUEIXA PRINCIPAL/im,
-        /^#+\s*1\.\s*QUEIXA/im,
-        /^QUEIXA PRINCIPAL/im
-      ];
-      let corpoEditado = textoEditado;
-      let conteudoEntreCabecalhoEQueixa = '';
-      for (const marcador of marcadoresCorpo) {
-        const match = textoEditado.search(marcador);
-        if (match !== -1) {
-          const CAMPOS_CABECALHO = [
-            /^nome/i, /^data de nasc/i, /^idade/i, /^escolaridade/i,
-            /^dominância/i, /^dominancia/i, /^medicamento/i, /^responsável/i,
-            /^responsavel/i, /^faz uso/i, /^RAN\s*-/i, /^RELATÓRIO/i,
-            /^Patrízia/i, /^Patrizia/i
-          ];
-          const linhasDocx = textoEditado.split('\n');
-          let fimCabecalhoImportado = 0;
-          for (let i = 0; i < Math.min(linhasDocx.length, 20); i++) {
-            const l = linhasDocx[i].trim();
-            if (!l) continue;
-            if (CAMPOS_CABECALHO.some(re => re.test(l))) fimCabecalhoImportado = i + 1;
-          }
-          const linhasAteQueixa = textoEditado.slice(0, match).split('\n').length;
-          const blocoIntermediario = linhasDocx.slice(fimCabecalhoImportado, linhasAteQueixa).join('\n').trim();
-          if (blocoIntermediario.length > 10) conteudoEntreCabecalhoEQueixa = blocoIntermediario;
-          corpoEditado = textoEditado.slice(match);
-          break;
-        }
-      }
-
-      let cabecalhoOriginal = '';
-      const contentOriginal = report.content_md || '';
-      for (const marcador of marcadoresCorpo) {
-        const match = contentOriginal.search(marcador);
-        if (match !== -1) { cabecalhoOriginal = contentOriginal.slice(0, match); break; }
-      }
-
-      const conteudoFinal = cabecalhoOriginal
-        ? cabecalhoOriginal.trimEnd() + '\n\n' +
-          (conteudoEntreCabecalhoEQueixa ? conteudoEntreCabecalhoEQueixa + '\n\n' : '') +
-          corpoEditado
-        : corpoEditado;
-
+      // Calcular versão X.Y
       const baseVersion = report.version || 1;
       const baseInt = parseInt(String(baseVersion).split('.')[0]);
       const reportsSnap = await db.collection('patients').doc(patient_id).collection('reports').get();
@@ -847,43 +741,86 @@ router.post('/:patient_id/:report_id/import-edited',
         const v = String(d.data().version || '');
         return v.startsWith(baseInt + '.') || v === String(baseInt);
       });
-      const proximaSub = subversoes.length;
-      const novaVersion = baseInt + '.' + proximaSub;
+      const novaVersion = baseInt + '.' + subversoes.length;
       const novoReportId = require('uuid').v4();
-
       const now = new Date().toISOString();
-      await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).set({
-        patient_id,
-        version: novaVersion,
-        content_md: conteudoFinal,
-        status: 'imported',
-        imported_at: now,
-        imported_from: req.file.originalname,
-        sync_source: 'import',
-        generated_at: now,
-        base_version: baseVersion,
-        drive_file_id: report.drive_file_id || null,
-        drive_is_google_doc: report.drive_is_google_doc || false,
-        ran_meta: report.ran_meta || null
+
+      // Criar job para acompanhamento
+      const jobId = require('uuid').v4();
+      await db.collection('jobs').doc(jobId).set({
+        patient_id, report_id: novoReportId,
+        status: 'processando', etapa: 'Normalizando relatório importado...',
+        created_at: now, updated_at: now
+      });
+      await db.collection('patients').doc(patient_id).update({
+        pipeline_ativo: true, pipeline_iniciado_em: new Date()
       });
 
-      fs.unlinkSync(req.file.path);
+      // Responder imediatamente com job_id
+      res.json({ job_id: jobId, message: 'Normalização iniciada' });
 
-      res.json({ message: 'Relatório importado com sucesso', imported_at: now });
-
+      // Processar em background
       setImmediate(async () => {
         try {
           const claude = require('../services/claude');
-          await claude.extrairPadroesDoRelatorio({
-            db,
-            patient_id,
-            report_id: novoReportId,
-            textoOriginal: report.content_md || '',
-            textoEditado: conteudoFinal,
-            userEmail: req.user?.email || 'default'
+
+          // Normalizar via Claude
+          await db.collection('jobs').doc(jobId).update({ etapa: 'Reescrevendo no padrão do sistema...' });
+          const { relatorio, custos } = await claude.normalizarRAN(textoImportado, patientInfo);
+
+          // Salvar relatório normalizado
+          await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).set({
+            patient_id, version: novaVersion,
+            content_md: relatorio, status: 'imported',
+            imported_at: now, imported_from: req.file?.originalname || 'docx',
+            sync_source: 'import', generated_at: now,
+            base_version: baseVersion,
+            drive_file_id: report.drive_file_id || null,
+            drive_is_google_doc: report.drive_is_google_doc || false,
+            ran_meta: JSON.stringify({ custos, revisao: null })
           });
-        } catch (e) {
-          console.error('[ImportEdit] Erro ao extrair padrões:', e.message);
+
+          // Upload para Drive
+          try {
+            const driveService = require('../services/drive');
+            const { gerarDocx } = require('../services/docx-generator');
+            const subfolderId = await driveService.getSubfolderId(patientInfo.drive_folder_id, 'relatorio');
+            const nomeBase = (patientInfo.full_name||'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+            const docxBuf = await gerarDocx(relatorio, nomeBase, null, patientInfo);
+            const driveFile = await driveService.uploadDocxAsGoogleDoc(docxBuf, `RAN_${nomeBase}_v${novaVersion}`, subfolderId);
+            await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).update({
+              drive_file_id: driveFile.id, drive_is_google_doc: true
+            });
+          } catch (driveErr) {
+            console.warn('[ImportEdit] Drive upload falhou:', driveErr.message);
+          }
+
+          // Concluir job
+          await db.collection('jobs').doc(jobId).update({
+            status: 'concluido', etapa: 'Concluído', updated_at: new Date().toISOString()
+          });
+          await db.collection('patients').doc(patient_id).update({
+            pipeline_ativo: false, pipeline_iniciado_em: null
+          });
+
+          // Extrair padrões em background
+          try {
+            await claude.extrairPadroesDoRelatorio({
+              db, patient_id, report_id: novoReportId,
+              textoOriginal: report.content_md || '',
+              textoEditado: relatorio,
+              userEmail: req.user?.email || 'default'
+            });
+          } catch(e) { console.warn('[ImportEdit] Padrões:', e.message); }
+
+        } catch (err) {
+          console.error('[ImportEdit] Erro background:', err.message);
+          await db.collection('jobs').doc(jobId).update({
+            status: 'failed', erro: err.message, updated_at: new Date().toISOString()
+          }).catch(()=>{});
+          await db.collection('patients').doc(patient_id).update({
+            pipeline_ativo: false, pipeline_iniciado_em: null
+          }).catch(()=>{});
         }
       });
 
