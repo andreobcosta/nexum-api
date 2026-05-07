@@ -397,6 +397,7 @@ function gerarBlocoIdentificacaoDireto(p) {
   const fmt = (v) => v ? String(v).trim() : '[Não informado]';
   const borderConfig = { style: BorderStyle.SINGLE, size: 4, color: BORDA };
   const borders = { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig };
+  const fmtData = (v) => { if (!v) return '[Não informado]'; const d = new Date(v + 'T12:00:00'); return isNaN(d.getTime()) ? v : d.toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}); };
   const linha = (label, valor) => new TableRow({
     children: [
       new TableCell({
@@ -418,7 +419,7 @@ function gerarBlocoIdentificacaoDireto(p) {
     layout: TableLayoutType.FIXED,
     rows: [
       linha('Nome completo', fmt(p.full_name)),
-      linha('Data de nascimento / Idade', fmt(p.birth_date) + '  |  ' + fmt(p.age ? p.age + ' anos' : null)),
+      linha('Data de nascimento / Idade', fmtData(p.birth_date)+'  |  '+fmt(p.age?p.age+' anos':null)),
       linha('Escolaridade', fmt(p.grade)),
       linha('Dominância manual', fmt(p.handedness)),
       linha('Medicamentos', fmt(p.medications)),
