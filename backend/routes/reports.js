@@ -722,7 +722,7 @@ router.post('/:patient_id/:report_id/import-edited',
         .replace(/<tr[^>]*>(.*?)<\/tr>/gis, (_,cells)=>{ const cols=cells.match(/<t[dh][^>]*>(.*?)<\/t[dh]>/gis)||[]; return '| '+cols.map(c=>c.replace(/<[^>]+>/g,'').trim()).join(' | ')+' |\n'; })
         .replace(/<[^>]+>/g, '')
         .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"')
-        .replace(/\*{3,}/g,'').replace(/\n{3,}/g,'\n\n').trim();
+        .replace(/\*{3,}/g,'').replace(/^\*\*([A-ZÁÀÃÂÉÊÍÓÔÕÚÇ\s\/+]+)\*\*$/gm, '## $1').replace(/\n{3,}/g,'\n\n').trim();
 
       if (!textoEditado || textoEditado.length < 100) {
         fs.unlinkSync(req.file.path);
