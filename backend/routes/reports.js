@@ -759,15 +759,22 @@ router.post('/:patient_id/:report_id/import-edited',
         if (i !== -1) { corpo = textoEditado.slice(i); break; }
       }
 
-      // Montar cabeçalho do Firestore + corpo editado
-      const cabecalhoOriginal = report.content_md ? (() => {
-        const md = report.content_md;
-        for (const m of marcadores) { const i = md.search(m); if (i !== -1) return md.slice(0, i); }
-        return '';
-      })() : '';
-      const conteudoFinal = cabecalhoOriginal
-        ? cabecalhoOriginal.trimEnd() + '\n\n' + corpo
-        : corpo;
+      // Gerar cabeçalho diretamente dos dados do paciente — não depende do content_md
+      const cab = patientInfo;
+      const fmtData = (v) => { if (!v) return '[Não informado]'; const d = new Date(v + 'T12:00:00'); return isNaN(d.getTime()) ? v : d.toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}); };
+      const cabecalhoGerado = [
+        '## CABEÇALHO',
+        '',
+        '| | |',
+        '|---|---|',
+        '| **Nome completo** | ' + (cab.full_name || '[Não informado]') + ' |',
+        '| **Data de nascimento / Idade** | ' + fmtData(cab.birth_date) + '  |  ' + (cab.age ? cab.age + ' anos' : '[Não informado]') + ' |',
+        '| **Escolaridade** | ' + (cab.grade || '[Não informado]') + ' |',
+        '| **Dominância manual** | ' + (cab.handedness || '[Não informado]') + ' |',
+        '| **Medicamentos** | ' + (cab.medications || '[Não informado]') + ' |',
+        '| **Responsáveis** | ' + (cab.guardians || '[Não informado]') + ' |',
+      ].join('\n');
+      const conteudoFinal = cabecalhoGerado + '\n\n' + corpo;
 
       // Calcular subversão X.Y
       const baseVersion = report.version || 1;
