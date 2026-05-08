@@ -708,21 +708,25 @@ router.post('/:patient_id/:report_id/import-edited',
       const docxBuffer = fs.readFileSync(req.file.path);
       const htmlResult = await mammoth.convertToHtml({ buffer: docxBuffer });
       const html = htmlResult.value;
-      const textoEditado = html
-        .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
-        .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
-        .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
-        .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n')
-        .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
-        .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
-        .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
-        .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+      // Remove <strong>/<b> DENTRO de headings antes de converter headings
+      // Isso evita double-bold (****texto****) quando o heading é perdido
+      const htmlNorm = html
+        .replace(/<(h[1-4])[^>]*>([\s\S]*?)<\/\1>/gi, (_, tag, inner) => {
+          const nivel = tag[1];
+          const texto = inner.replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').trim();
+          return '#'.repeat(parseInt(nivel)) + ' ' + texto + '\n';
+        });
+      const textoEditado = htmlNorm
+        .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, '**$1**')
+        .replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, '**$1**')
+        .replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, '*$1*')
+        .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n')
         .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
-        .replace(/<tr[^>]*>(.*?)<\/tr>/gis, (_,cells)=>{ const cols=cells.match(/<t[dh][^>]*>(.*?)<\/t[dh]>/gis)||[]; return '| '+cols.map(c=>c.replace(/<[^>]+>/g,'').trim()).join(' | ')+' |\n'; })
+        .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1\n\n')
+        .replace(/<tr[^>]*>([\s\S]*?)<\/tr>/gis, (_,cells)=>{ const cols=cells.match(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gis)||[]; return '| '+cols.map(c=>c.replace(/<[^>]+>/g,'').trim()).join(' | ')+' |\n'; })
         .replace(/<[^>]+>/g, '')
         .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"')
-        .replace(/\*{3,}/g,'').replace(/\n{3,}/g,'\n\n').trim();
+        .replace(/\*{3,}/g,'**').replace(/\n{3,}/g,'\n\n').trim();
 
       if (!textoEditado || textoEditado.length < 100) {
         fs.unlinkSync(req.file.path);
