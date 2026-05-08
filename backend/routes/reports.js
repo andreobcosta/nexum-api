@@ -722,7 +722,7 @@ router.post('/:patient_id/:report_id/import-edited',
         .replace(/<tr[^>]*>(.*?)<\/tr>/gis, (_,cells)=>{ const cols=cells.match(/<t[dh][^>]*>(.*?)<\/t[dh]>/gis)||[]; return '| '+cols.map(c=>c.replace(/<[^>]+>/g,'').trim()).join(' | ')+' |\n'; })
         .replace(/<[^>]+>/g, '')
         .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"')
-        .replace(/\*{3,}/g,'').replace(/^\*\*([A-ZÁÀÃÂÉÊÍÓÔÕÚÇ\s\/+]+)\*\*$/gm, '## $1').replace(/\n{3,}/g,'\n\n').trim();
+        .replace(/\*{3,}/g,'').replace(/\n{3,}/g,'\n\n').trim();
 
       if (!textoEditado || textoEditado.length < 100) {
         fs.unlinkSync(req.file.path);
@@ -763,8 +763,6 @@ router.post('/:patient_id/:report_id/import-edited',
       const cab = patientInfo;
       const fmtData = (v) => { if (!v) return '[Não informado]'; const d = new Date(v + 'T12:00:00'); return isNaN(d.getTime()) ? v : d.toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}); };
       const cabecalhoGerado = [
-        '## CABEÇALHO',
-        '',
         '| | |',
         '|---|---|',
         '| **Nome completo** | ' + (cab.full_name || '[Não informado]') + ' |',
