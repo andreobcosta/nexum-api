@@ -13,6 +13,7 @@
     "@google-cloud/firestore": "^7.9.0",
     "@google-cloud/speech": "^6.7.0",
     "@google-cloud/storage": "^7.0.0",
+    "@grpc/proto-loader": "0.8.0",
     "cors": "^2.8.5",
     "docx": "^9.6.1",
     "dotenv": "^16.4.5",

@@ -683,7 +683,8 @@ router.patch('/:patient_id/:report_id', async (req, res) => {
 });
 
 // POST /api/reports/:patient_id/:report_id/import-edited
-// Recebe DOCX editado pelo cliente, normaliza via Claude e salva como nova versão
+// Recebe DOCX editado pelo cliente, extrai texto e salva como subversão X.Y
+// Sem normalização via Claude — o cliente edita o DOCX gerado pelo sistema
 router.post('/:patient_id/:report_id/import-edited',
   require('multer')({ dest: require('path').join(__dirname,'../temp'),
     limits:{ fileSize: 20*1024*1024 } }).single('file'),
@@ -701,13 +702,13 @@ router.post('/:patient_id/:report_id/import-edited',
       if (!reportDoc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
       const report = reportDoc.data();
 
-      // Extrair texto do DOCX
+      // Extrair texto do DOCX via mammoth
       const mammoth = require('mammoth');
       const fs = require('fs');
       const docxBuffer = fs.readFileSync(req.file.path);
       const htmlResult = await mammoth.convertToHtml({ buffer: docxBuffer });
       const html = htmlResult.value;
-      const textoImportado = html
+      const textoEditado = html
         .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n')
         .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n')
         .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n')
@@ -723,7 +724,7 @@ router.post('/:patient_id/:report_id/import-edited',
         .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"')
         .replace(/\*{3,}/g,'').replace(/\n{3,}/g,'\n\n').trim();
 
-      if (!textoImportado || textoImportado.length < 100) {
+      if (!textoEditado || textoEditado.length < 100) {
         fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'DOCX sem conteúdo legível' });
       }
@@ -733,38 +734,38 @@ router.post('/:patient_id/:report_id/import-edited',
       const patientDoc = await db.collection('patients').doc(patient_id).get();
       const patientInfo = patientDoc.exists ? patientDoc.data() : {};
 
-      // Limpar campos do paciente que contêm dados de outros campos
-      // (sinal de que o cabeçalho foi importado de forma corrompida)
-      const OUTROS_CAMPOS = ['medicamento', 'responsável', 'responsavel',
-        'faz uso', 'escolaridade', 'nome', 'data de nasc'];
-      const campoCorrompido = (val) => {
-        if (!val) return false;
-        const v = val.toLowerCase();
-        return OUTROS_CAMPOS.some(c => v.includes(c));
-      };
-      if (campoCorrompido(patientInfo.handedness)) {
-        patientInfo.handedness = null;
-        await db.collection('patients').doc(patient_id).update({
-          handedness: null, updated_at: new Date().toISOString()
-        });
-        console.log('[ImportEdit] handedness corrompido — limpo');
-      }
-      if (campoCorrompido(patientInfo.guardians)) {
-        patientInfo.guardians = null;
-        await db.collection('patients').doc(patient_id).update({
-          guardians: null, updated_at: new Date().toISOString()
-        });
-        console.log('[ImportEdit] guardians corrompido — limpo');
-      }
-      if (campoCorrompido(patientInfo.medications)) {
-        patientInfo.medications = null;
-        await db.collection('patients').doc(patient_id).update({
-          medications: null, updated_at: new Date().toISOString()
-        });
-        console.log('[ImportEdit] medications corrompido — limpo');
+      // Limpar campos corrompidos
+      const OUTROS_CAMPOS = ['medicamento','responsável','responsavel','faz uso','escolaridade','nome','data de nasc'];
+      const campoCorrompido = (val) => { if (!val) return false; const v = val.toLowerCase(); return OUTROS_CAMPOS.some(c => v.includes(c)); };
+      const camposParaLimpar = {};
+      if (campoCorrompido(patientInfo.handedness)) { patientInfo.handedness = null; camposParaLimpar.handedness = null; }
+      if (campoCorrompido(patientInfo.guardians)) { patientInfo.guardians = null; camposParaLimpar.guardians = null; }
+      if (campoCorrompido(patientInfo.medications)) { patientInfo.medications = null; camposParaLimpar.medications = null; }
+      if (Object.keys(camposParaLimpar).length > 0) {
+        camposParaLimpar.updated_at = new Date().toISOString();
+        await db.collection('patients').doc(patient_id).update(camposParaLimpar);
+        console.log('[ImportEdit] Campos corrompidos limpos:', Object.keys(camposParaLimpar));
       }
 
-      // Calcular versão X.Y
+      // Cortar cabeçalho do DOCX importado — usar apenas o corpo a partir de QUEIXA PRINCIPAL
+      const marcadores = [/^#+\s*QUEIXA PRINCIPAL/im, /^QUEIXA PRINCIPAL/im];
+      let corpo = textoEditado;
+      for (const m of marcadores) {
+        const i = textoEditado.search(m);
+        if (i !== -1) { corpo = textoEditado.slice(i); break; }
+      }
+
+      // Montar cabeçalho do Firestore + corpo editado
+      const cabecalhoOriginal = report.content_md ? (() => {
+        const md = report.content_md;
+        for (const m of marcadores) { const i = md.search(m); if (i !== -1) return md.slice(0, i); }
+        return '';
+      })() : '';
+      const conteudoFinal = cabecalhoOriginal
+        ? cabecalhoOriginal.trimEnd() + '\n\n' + corpo
+        : corpo;
+
+      // Calcular subversão X.Y
       const baseVersion = report.version || 1;
       const baseInt = parseInt(String(baseVersion).split('.')[0]);
       const reportsSnap = await db.collection('patients').doc(patient_id).collection('reports').get();
@@ -776,83 +777,31 @@ router.post('/:patient_id/:report_id/import-edited',
       const novoReportId = require('uuid').v4();
       const now = new Date().toISOString();
 
-      // Criar job para acompanhamento
-      const jobId = require('uuid').v4();
-      await db.collection('jobs').doc(jobId).set({
-        patient_id, report_id: novoReportId,
-        status: 'processando', etapa: 'Normalizando relatório importado...',
-        created_at: now, updated_at: now
-      });
-      await db.collection('patients').doc(patient_id).update({
-        pipeline_ativo: true, pipeline_iniciado_em: new Date()
+      // Salvar nova subversão
+      await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).set({
+        patient_id, version: novaVersion,
+        content_md: conteudoFinal, status: 'imported',
+        imported_at: now, imported_from: req.file?.originalname || 'docx',
+        sync_source: 'import', generated_at: now,
+        base_version: baseVersion,
+        drive_file_id: report.drive_file_id || null,
+        drive_is_google_doc: report.drive_is_google_doc || false,
+        ran_meta: report.ran_meta || null
       });
 
-      // Responder imediatamente com job_id
-      res.json({ job_id: jobId, message: 'Normalização iniciada' });
+      res.json({ message: 'Relatório importado com sucesso', imported_at: now, version: novaVersion });
 
-      // Processar em background
+      // Extrair padrões em background
       setImmediate(async () => {
         try {
           const claude = require('../services/claude');
-
-          // Normalizar via Claude
-          await db.collection('jobs').doc(jobId).update({ etapa: 'Reescrevendo no padrão do sistema...' });
-          const { relatorio, custos } = await claude.normalizarRAN(textoImportado, patientInfo);
-
-          // Salvar relatório normalizado
-          await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).set({
-            patient_id, version: novaVersion,
-            content_md: relatorio, status: 'imported',
-            imported_at: now, imported_from: req.file?.originalname || 'docx',
-            sync_source: 'import', generated_at: now,
-            base_version: baseVersion,
-            drive_file_id: report.drive_file_id || null,
-            drive_is_google_doc: report.drive_is_google_doc || false,
-            ran_meta: JSON.stringify({ custos, revisao: null })
+          await claude.extrairPadroesDoRelatorio({
+            db, patient_id, report_id: novoReportId,
+            textoOriginal: report.content_md || '',
+            textoEditado: conteudoFinal,
+            userEmail: req.user?.email || 'default'
           });
-
-          // Upload para Drive
-          try {
-            const driveService = require('../services/drive');
-            const { gerarDocx } = require('../services/docx-generator');
-            const subfolderId = await driveService.getSubfolderId(patientInfo.drive_folder_id, 'relatorio');
-            const nomeBase = (patientInfo.full_name||'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
-            const docxBuf = await gerarDocx(relatorio, nomeBase, null, patientInfo);
-            const driveFile = await driveService.uploadDocxAsGoogleDoc(docxBuf, `RAN_${nomeBase}_v${novaVersion}`, subfolderId);
-            await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).update({
-              drive_file_id: driveFile.id, drive_is_google_doc: true
-            });
-          } catch (driveErr) {
-            console.warn('[ImportEdit] Drive upload falhou:', driveErr.message);
-          }
-
-          // Concluir job
-          await db.collection('jobs').doc(jobId).update({
-            status: 'concluido', etapa: 'Concluído', updated_at: new Date().toISOString()
-          });
-          await db.collection('patients').doc(patient_id).update({
-            pipeline_ativo: false, pipeline_iniciado_em: null
-          });
-
-          // Extrair padrões em background
-          try {
-            await claude.extrairPadroesDoRelatorio({
-              db, patient_id, report_id: novoReportId,
-              textoOriginal: report.content_md || '',
-              textoEditado: relatorio,
-              userEmail: req.user?.email || 'default'
-            });
-          } catch(e) { console.warn('[ImportEdit] Padrões:', e.message); }
-
-        } catch (err) {
-          console.error('[ImportEdit] Erro background:', err.message);
-          await db.collection('jobs').doc(jobId).update({
-            status: 'failed', erro: err.message, updated_at: new Date().toISOString()
-          }).catch(()=>{});
-          await db.collection('patients').doc(patient_id).update({
-            pipeline_ativo: false, pipeline_iniciado_em: null
-          }).catch(()=>{});
-        }
+        } catch (e) { console.error('[ImportEdit] Padrões:', e.message); }
       });
 
     } catch (err) {
