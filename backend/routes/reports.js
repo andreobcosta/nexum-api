@@ -749,7 +749,7 @@ router.post('/:patient_id/:report_id/import-edited',
 
       // Cortar cabeçalho do DOCX importado — usar apenas o corpo a partir de QUEIXA PRINCIPAL
       const marcadores = [
-        /^#+\s*QUEIXA PRINCIPAL/im,
+        /^#+\s*\*{0,2}\s*QUEIXA PRINCIPAL/im,
         /^\*\*QUEIXA PRINCIPAL\*\*/im,
         /^QUEIXA PRINCIPAL/im
       ];
