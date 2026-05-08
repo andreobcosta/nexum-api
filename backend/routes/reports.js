@@ -549,23 +549,26 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
     const patient = patientDoc.data();
     const nomeBase = (patient?.full_name || 'paciente').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
     const fileName = 'RAN_' + nomeBase + '_v' + report.version + '.docx';
+    // Caminho principal: docx-generator lê content_md do Firestore
+    // com headings Word reais. Drive export é fallback (perde headings).
     let buffer;
-    if (report.drive_file_id) {
-      try {
-        const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
-        if (isDoc) {
-          console.log('[DOCX] Exportando Google Doc como .docx:', report.drive_file_id);
-          buffer = await drive.exportAsDocx(report.drive_file_id);
-        }
-      } catch (e) { console.warn('[DOCX] Falha exportar Google Doc:', e.message); }
-    }
-    if (!buffer) {
-      console.log('[DOCX] Gerando DOCX local a partir do Markdown');
+    try {
+      console.log('[DOCX] Gerando DOCX via docx-generator');
       const { gerarDocx } = require('../services/docx-generator');
-      const patientDoc = await db.collection('patients').doc(report.patient_id).get();
-      const pacienteData = patientDoc.exists ? patientDoc.data() : null;
-      buffer = await gerarDocx(report.content_md || '', report.patient_id, req.user.email, pacienteData);
+      buffer = await gerarDocx(report.content_md || '', req.params.patient_id, req.user.email, patient);
+    } catch (e) {
+      console.warn('[DOCX] Falha no docx-generator, tentando Drive export:', e.message);
+      if (report.drive_file_id) {
+        try {
+          const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
+          if (isDoc) {
+            console.log('[DOCX] Exportando Google Doc como fallback:', report.drive_file_id);
+            buffer = await drive.exportAsDocx(report.drive_file_id);
+          }
+        } catch (e2) { console.warn('[DOCX] Falha no Drive export:', e2.message); }
+      }
     }
+    if (!buffer) throw new Error('Não foi possível gerar o DOCX por nenhum método disponível');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
     res.setHeader('Content-Length', buffer.length);
