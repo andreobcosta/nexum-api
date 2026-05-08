@@ -757,10 +757,17 @@ router.post('/:patient_id/:report_id/import-edited',
         /^\*\*QUEIXA PRINCIPAL\*\*/im,
         /^QUEIXA PRINCIPAL/im
       ];
-      let corpo = textoEditado;
+      let corpo = null;
       for (const m of marcadores) {
         const i = textoEditado.search(m);
         if (i !== -1) { corpo = textoEditado.slice(i); break; }
+      }
+      if (!corpo) {
+        fs.unlinkSync(req.file.path);
+        return res.status(422).json({
+          error: 'DOCX inválido: seção "QUEIXA PRINCIPAL" não encontrada.',
+          detalhe: 'O documento precisa conter o título "QUEIXA PRINCIPAL" para ser importado. Verifique se o título está presente e tente novamente.'
+        });
       }
 
       // Gerar cabeçalho diretamente dos dados do paciente — não depende do content_md
