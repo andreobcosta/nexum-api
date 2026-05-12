@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <meta name="theme-color" content="#0B3D2E"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -488,7 +488,8 @@ function NewPatientPage({onBack,onCreated}){
 }
 
 
-function FileItem({f,patientId,categories,onDeleted,onCategoryChanged,onError,onPreviewFile}){
+const FILE_CATS=[{key:'anamnese',label:'Anamnese'},{key:'teste',label:'Testes'},{key:'sessao',label:'Sessões'},{key:'relatorio',label:'Relatórios'},{key:'intervencao',label:'Intervenções'},{key:'externo',label:'Docs. externos'}];
+function FileItem({f,patientId,onDeleted,onCategoryChanged,onError,onPreviewFile}){
   const[confirm,setConfirm]=useState(false);
   const[deleting,setDeleting]=useState(false);
   const[renaming,setRenaming]=useState(false);
@@ -496,7 +497,7 @@ function FileItem({f,patientId,categories,onDeleted,onCategoryChanged,onError,on
   const del=async()=>{if(!confirm){setConfirm(true);setTimeout(()=>setConfirm(false),3000);return;}setDeleting(true);try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'DELETE'});onDeleted();}catch(e){onError(e.message);}finally{setDeleting(false);}};
   const startRename=()=>{setNewName(f.display_name||f.original_name);setRenaming(true);};
   const saveRename=async()=>{const n=newName.trim();if(!n||n===(f.display_name||f.original_name)){setRenaming(false);return;}try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({display_name:n})});setRenaming(false);onDeleted();}catch(e){onError(e.message);setRenaming(false);}};
-  const changeCategory=async(cat)=>{try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({categoria:cat})});if(onCategoryChanged)onCategoryChanged();}catch(e){onError(e.message);}};
+  const changeCategory=async(cat)=>{try{await apiFetch('/files/'+patientId+'/'+f.id,{method:'PATCH',body:JSON.stringify({category:cat})});if(onCategoryChanged)onCategoryChanged();}catch(e){onError(e.message);}};
   return(
     <div style={{display:'grid',gridTemplateColumns:'1fr 140px 80px',padding:'10px 12px',borderBottom:'1px solid '+V.sand2,alignItems:'center',gap:8}}>
       <div style={{minWidth:0}}>
@@ -508,9 +509,9 @@ function FileItem({f,patientId,categories,onDeleted,onCategoryChanged,onError,on
         {f.file_type==='audio'&&<div style={{fontSize:10,color:f.transcription?V.green:V.amber,marginTop:2,marginLeft:20}}>{f.transcription?'✓ Transcrito':'⏳ Pendente'}</div>}
       </div>
       <div>
-        <select value={f.categoria||''} onChange={e=>changeCategory(e.target.value)} style={{width:'100%',fontSize:11,padding:'4px 6px',border:'1px solid '+V.sand3,borderRadius:6,background:V.white,color:f.categoria?V.ink:V.ink3,fontFamily:'inherit',cursor:'pointer'}}>
+        <select value={f.category||f.categoria||''} onChange={e=>changeCategory(e.target.value)} style={{width:'100%',fontSize:11,padding:'4px 6px',border:'1px solid '+V.sand3,borderRadius:6,background:V.white,color:(f.category||f.categoria)?V.ink:V.ink3,fontFamily:'inherit',cursor:'pointer'}}>
           <option value="">— Categoria —</option>
-          {(categories||[]).map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+          {FILE_CATS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
       </div>
       <div style={{display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
@@ -531,11 +532,9 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
   const[expandedCat,setExpandedCat]=useState(null);
   const[showAtualizarMenu,setShowAtualizarMenu]=useState(false);
   const importRanRef=useRef(null);
-  const[customCats,setCustomCats]=useState([]);
 
   const load=useCallback(()=>{setLoading(true);apiFetch('/patients/'+patientId).then(setPatient).catch(console.error).finally(()=>setLoading(false))},[patientId]);
   useEffect(()=>{load()},[load]);
-  useEffect(()=>{apiFetch('/settings/categorias').then(d=>setCustomCats(d.categorias||[])).catch(()=>{});},[]);
 
   const runPipeline=async(endpoint,successMsg)=>{
     setGenerating(true);setPipelineStage('analitico');setPipelineMsg('Iniciando...');
@@ -673,7 +672,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
             <div style={{display:'grid',gridTemplateColumns:'1fr 140px 80px',padding:'8px 12px',borderBottom:'1px solid '+V.sand2,fontSize:11,fontWeight:700,color:V.ink3,textTransform:'uppercase',letterSpacing:'0.04em'}}>
               <span>Arquivo</span><span>Categoria</span><span style={{textAlign:'right'}}>Ações</span>
             </div>
-            {files.map(f=><FileItem key={f.id} f={f} patientId={patientId} categories={customCats} onDeleted={()=>load()} onCategoryChanged={()=>load()} onError={e=>setToast({message:e,type:'error'})} onPreviewFile={onPreviewFile}/>)}
+            {files.map(f=><FileItem key={f.id} f={f} patientId={patientId} onDeleted={()=>load()} onCategoryChanged={()=>load()} onError={e=>setToast({message:e,type:'error'})} onPreviewFile={onPreviewFile}/>)}
           </div>
         )}
         <Btn onClick={()=>onCapture(patientId,null)} full icon="↑" variant="secondary">Enviar arquivo</Btn>
@@ -823,6 +822,7 @@ function ReportViewPage({reportId,patientId,onBack}){
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[showDownloadMenu,setShowDownloadMenu]=useState(false);
   const[blocos,setBlocos]=useState(null);
   const[feedbacks,setFeedbacks]=useState({});const[patient,setPatient]=useState(null);
+  const[zoom,setZoom]=useState(100);const adjZoom=d=>setZoom(z=>Math.max(70,Math.min(200,z+d)));
 
   useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);const md=r.content_md||'';const marcadores=[/^#+\s*QUEIXA PRINCIPAL/im,/^QUEIXA PRINCIPAL/im];let corpo=md;for(const m of marcadores){const i=md.search(m);if(i!==-1){corpo=md.slice(i);break;}}setBlocos(parseBlocks(corpo));}).catch(console.error).finally(()=>setLoading(false));apiFetch('/reports/'+patientId+'/'+reportId+'/feedback').then(setFeedbacks).catch(()=>{});apiFetch('/patients/'+patientId).then(setPatient).catch(()=>{});},[reportId,patientId]);
 
@@ -859,9 +859,14 @@ function ReportViewPage({reportId,patientId,onBack}){
         {[{k:'relatorio',lb:'📄 Relatório'},{k:'revisao',lb:'✅ Revisão'}].map(({k,lb})=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:'12px 16px',background:'none',border:'none',borderBottom:tab===k?'2px solid '+V.forest:'2px solid transparent',color:tab===k?V.forest:V.ink3,fontSize:13,fontWeight:tab===k?600:400,cursor:'pointer',fontFamily:'inherit',transition:'color .2s'}}>{lb}</button>
         ))}
+        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:4,paddingRight:4}}>
+          <button onClick={()=>adjZoom(-10)} title="Diminuir zoom" style={{background:'none',border:'1px solid '+V.sand3,borderRadius:6,width:28,height:28,cursor:'pointer',fontSize:15,color:V.ink3,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+          <span style={{fontSize:11,color:V.ink3,minWidth:36,textAlign:'center'}}>{zoom}%</span>
+          <button onClick={()=>adjZoom(10)} title="Aumentar zoom" style={{background:'none',border:'1px solid '+V.sand3,borderRadius:6,width:28,height:28,cursor:'pointer',fontSize:15,color:V.ink3,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+        </div>
       </div>
 
-      <div style={{flex:1,overflow:'auto',padding:16,paddingBottom:32}}>
+      <div style={{flex:1,overflow:'auto',padding:16,paddingBottom:32,fontSize:zoom+'%'}}>
         {/* Banner info Drive */}
         {hasDriveFile&&<div style={{background:isGoogleDoc?V.sage3:V.amberLight,borderRadius:12,padding:'10px 14px',marginBottom:12,fontSize:12,color:isGoogleDoc?V.forest:V.amber,border:'1px solid '+(isGoogleDoc?V.sage:V.amber),display:'flex',gap:8,alignItems:'flex-start'}}>
           <span>{isGoogleDoc?'🔄':'⚠'}</span>
@@ -1198,21 +1203,41 @@ function SettingsPage({onBack,onAdmin}){
 /* ── PAGE: FILE PREVIEW ── */
 function FilePreviewPage({patientId,fileId,onBack}){
   const[info,setInfo]=useState(null);const[loading,setLoading]=useState(true);const[dl,setDl]=useState(false);
-  useEffect(()=>{apiFetch('/files/'+patientId+'/'+fileId+'/info').then(setInfo).catch(console.error).finally(()=>setLoading(false));},[patientId,fileId]);
+  const[zoom,setZoom]=useState(100);const adjZoom=d=>setZoom(z=>Math.max(70,Math.min(200,z+d)));
+  const[editName,setEditName]=useState(false);const[newName,setNewName]=useState('');const[savingName,setSavingName]=useState(false);
+  const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};
+  useEffect(()=>{apiFetch('/files/'+patientId+'/'+fileId+'/info').then(d=>{setInfo(d);setNewName(d.name||d.original_name||'');}).catch(console.error).finally(()=>setLoading(false));},[patientId,fileId]);
   const doDownload=async()=>{setDl(true);try{const r=await fetch(API+'/files/'+patientId+'/'+fileId+'/download',{headers:{'Authorization':'Bearer '+localStorage.getItem('nexum_token')}});if(!r.ok)throw new Error('Falha no download');const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=info.original_name||info.name;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}catch(e){console.error('[FilePreview] download:',e.message);}finally{setDl(false);}};
+  const saveName=async()=>{const n=newName.trim();if(!n||n===info.name)return setEditName(false);setSavingName(true);try{await apiFetch('/files/'+patientId+'/'+fileId,{method:'PATCH',body:JSON.stringify({display_name:n})});setInfo(i=>({...i,name:n}));setToast({message:'Arquivo renomeado',type:'success'});setEditName(false);}catch(e){setToast({message:e.message,type:'error'});}finally{setSavingName(false);}};
   if(loading)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Arquivo" onBack={onBack}/><Spinner text="Carregando..."/></div>);
   if(!info)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>);
   return(
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#1a1a1a'}}>
-      <Header title={info.name} subtitle="Visualização" onBack={onBack} right={<button onClick={doDownload} disabled={dl} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',flexShrink:0}}>{dl?'...':'⬇ Baixar'}</button>}/>
+      <Header title={info.name} subtitle="Visualização" onBack={onBack} right={
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          <button onClick={()=>{setEditName(e=>!e);setNewName(info.name||info.original_name||'');}} title="Renomear" style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.9)',width:32,height:32,borderRadius:8,cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>✏️</button>
+          <button onClick={doDownload} disabled={dl} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',flexShrink:0}}>{dl?'...':'⬇ Baixar'}</button>
+        </div>
+      }/>
+      {editName&&<div style={{display:'flex',gap:8,padding:'8px 12px',background:'#2a2a2a',borderBottom:'1px solid #333',flexShrink:0}}>
+        <input value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')saveName();}} style={{flex:1,padding:'6px 10px',borderRadius:8,border:'1px solid #444',background:'#1a1a1a',color:V.sand,fontSize:13,fontFamily:'inherit',outline:'none'}}/>
+        <button onClick={saveName} disabled={savingName} style={{padding:'6px 12px',borderRadius:8,border:'none',background:V.forest,color:V.white,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>{savingName?'...':'Salvar'}</button>
+        <button onClick={()=>setEditName(false)} style={{padding:'6px 12px',borderRadius:8,border:'none',background:'#333',color:V.sand,fontSize:12,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>✕</button>
+      </div>}
+      {!info.preview_url&&info.content&&<div style={{display:'flex',alignItems:'center',gap:4,padding:'6px 12px',background:'#2a2a2a',borderBottom:'1px solid #333',flexShrink:0}}>
+        <button onClick={()=>adjZoom(-10)} title="Diminuir zoom" style={{background:'none',border:'1px solid #444',borderRadius:6,width:28,height:28,cursor:'pointer',fontSize:15,color:V.sand,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+        <span style={{fontSize:11,color:'#999',minWidth:36,textAlign:'center'}}>{zoom}%</span>
+        <button onClick={()=>adjZoom(10)} title="Aumentar zoom" style={{background:'none',border:'1px solid #444',borderRadius:6,width:28,height:28,cursor:'pointer',fontSize:15,color:V.sand,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+      </div>}
       <div style={{flex:1,overflow:'auto',position:'relative'}}>
         {info.preview_url
           ?<iframe src={info.preview_url} style={{width:'100%',height:'100%',border:'none',position:'absolute',inset:0}} title={info.name}/>
           :info.content
-            ?<div style={{padding:20,color:V.sand,fontSize:14,lineHeight:1.7,whiteSpace:'pre-wrap'}}>{info.content}</div>
+            ?<div style={{padding:20,color:V.sand,fontSize:zoom+'%',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{info.content}</div>
             :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:V.ink3,fontSize:14}}>Pré-visualização não disponível</div>
         }
       </div>
+      <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
     </div>
   )
 }

@@ -178,7 +178,7 @@ router.post('/generate/:patient_id', async (req, res) => {
         };
 
         const systemPrompt = await claude.getSystemPrompt();
-        const ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage, onProgress);
+        const ranResult = await claude.generateRAN(systemPrompt, patient, dataPackage, onProgress, req.user?.email);
         await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null });
 
         const reportContent = ranResult.relatorio;

@@ -260,12 +260,31 @@ Responda APENAS com JSON válido, sem texto adicional:
 
 // ── AGENTE REDATOR — Sonnet com foco em estrutura e estilo
 // Responsabilidade: redigir bem as 12 seções com base no dossiê já analisado
-async function agentRedator(systemPromptRAN, patientInfo, dossie, onProgress) {
+async function agentRedator(systemPromptRAN, patientInfo, dossie, onProgress, userEmail) {
   onProgress?.('redator', 'Agente Redator iniciado — estruturando as 12 seções...');
 
   const dossieStr = dossie.parse_error
     ? dossie.raw_analysis
     : JSON.stringify(dossie, null, 2);
+
+  // Busca padrões profissionais ativos (ativo=true, ocorrencias>=3)
+  let padroesAtivos = [];
+  if (userEmail) {
+    try {
+      const db = getDb();
+      const settingsDoc = await db.collection('clinic_settings').doc(userEmail).get();
+      if (settingsDoc.exists) {
+        padroesAtivos = (settingsDoc.data().padroes_profissionais || []).filter(p => p.ativo === true);
+      }
+    } catch (e) {
+      console.warn('[Redator] Não carregou padrões profissionais:', e.message);
+    }
+  }
+
+  const padroesStr = padroesAtivos.length > 0
+    ? '\n\n## Padrões de estilo da profissional (aprendidos de relatórios anteriores — aplicar quando relevante):\n' +
+      padroesAtivos.map((p, i) => `${i + 1}. [${p.tipo}] ${p.descricao}${p.instrumento ? ' (instrumento: ' + p.instrumento + ')' : ''}`).join('\n')
+    : '';
 
   const userMessage = [
     '# SOLICITAÇÃO DE REDAÇÃO DO RAN',
@@ -281,6 +300,7 @@ async function agentRedator(systemPromptRAN, patientInfo, dossie, onProgress) {
     '',
     '## Dossiê Analítico (produzido pelo Agente Analítico):',
     dossieStr,
+    padroesStr,
     '',
     '---',
     'Com base no dossiê acima, redija o Relatório de Avaliação Neuropsicopedagógica (RAN) completo.',
@@ -429,7 +449,7 @@ Responda APENAS com JSON válido.`;
 }
 
 // ── PIPELINE PRINCIPAL — Analítico → Redator → Revisor
-async function generateRAN(systemPromptRAN, patientInfo, rawCollectedData, onProgress) {
+async function generateRAN(systemPromptRAN, patientInfo, rawCollectedData, onProgress, userEmail) {
   const { processDataPackage } = require('./pdf-extractor');
   const startTime = Date.now();
   const log = (agent, msg) => {
@@ -458,7 +478,7 @@ async function generateRAN(systemPromptRAN, patientInfo, rawCollectedData, onPro
 
   // Etapa 2: Redação das 12 seções
   log('pipeline', 'Etapa 2/3 — Agente Redator (Sonnet)');
-  const { relatorio, cost: costRedator } = await agentRedator(systemPromptRAN, patientInfo, dossie, log);
+  const { relatorio, cost: costRedator } = await agentRedator(systemPromptRAN, patientInfo, dossie, log, userEmail);
 
   // Etapa 3: Revisão completa
   log('pipeline', 'Etapa 3/3 — Agente Revisor (Haiku)');
