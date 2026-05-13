@@ -593,17 +593,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
       }/>
       <div style={{flex:1,overflow:'auto',padding:16,paddingBottom:32}}>
 
-        {/* Info card */}
-        <Card style={{marginBottom:12}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
-            <div>
-              <div style={{fontSize:13,color:V.ink3}}>{patient.age?patient.age+' anos · ':''}{patient.grade||''}</div>
-              <div style={{fontSize:12,color:V.ink4,marginTop:3}}>{patient.handedness||''}{patient.medications?' · '+patient.medications:''}</div>
-              {patient.guardians&&<div style={{fontSize:12,color:V.ink4,marginTop:2}}>Resp.: {patient.guardians}</div>}
-            </div>
-            {patient.ready_for_ran&&<Badge type="ready"/>}
-          </div>
-        </Card>
+
 
         <input ref={importRanRef} type="file" accept=".docx" style={{display:'none'}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reportBase=reports.find(r=>Number.isInteger(Number(r.version))||!String(r.version).includes('.'));if(!reportBase)return setToast({message:'Nenhum relatório base encontrado',type:'error'});const fd=new FormData();fd.append('file',file);setGenerating(true);setPipelineStage(null);setPipelineMsg('Enviando arquivo...');apiUpload('/reports/'+patientId+'/'+reportBase.id+'/import-edited',fd).then(r=>{if(!r.job_id){setToast({message:'Relatório importado!',type:'success'});load();setGenerating(false);setPipelineStage(null);setPipelineMsg('');return;}setPipelineMsg('Normalizando relatório...');let n=0;const t=setInterval(async()=>{if(++n>200){clearInterval(t);setGenerating(false);setPipelineStage(null);setPipelineMsg('');setToast({message:'Timeout na normalização',type:'error'});return;}try{const j=await apiFetch('/reports/job/'+r.job_id);const SMAP={analitico:'analitico',redator:'redator',revisor:'revisor'};const s=SMAP[j.etapa];if(s){setPipelineStage(s);setPipelineMsg(j.etapa);}else{setPipelineMsg(j.etapa||'Processando...');}if(j.status==='concluido'){clearInterval(t);setGenerating(false);setPipelineStage('done');setPipelineMsg('');setToast({message:'Relatório normalizado e importado!',type:'success'});setTimeout(()=>load(),1000);}else if(j.status==='failed'){clearInterval(t);setGenerating(false);setPipelineStage(null);setPipelineMsg('');setToast({message:j.erro||'Erro na normalização',type:'error'});}}catch(pe){console.warn('[poll import]',pe.message);}},3000);}).catch(e=>{setToast({message:e.message,type:'error'});setGenerating(false);setPipelineStage(null);setPipelineMsg('');});}}/>
 
@@ -826,7 +816,6 @@ function parseHtmlToMarkdown(html){if(!html)return'';let md=html;md=md.replace(/
 function parseBlocks(md){if(!md)return[];const lines=md.split('\n');const blocks=[];let cur=null;let idx=0;for(let i=0;i<lines.length;i++){if(/^#{1,4}\s+.+/.test(lines[i])){if(cur!==null)blocks.push({id:'b'+(idx++),content:cur,feedback:null});cur=lines[i]+'\n';}else{if(cur!==null)cur+=lines[i]+'\n';else if(lines[i].trim()){cur=lines[i]+'\n';}}}if(cur)blocks.push({id:'b'+(idx++),content:cur,feedback:null});return blocks;}
 function ReportViewPage({reportId,patientId,onBack}){
   const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);
-  const[tab,setTab]=useState('relatorio');
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[showDownloadMenu,setShowDownloadMenu]=useState(false);
   const[blocos,setBlocos]=useState(null);
   const[feedbacks,setFeedbacks]=useState({});const[patient,setPatient]=useState(null);
@@ -862,12 +851,9 @@ function ReportViewPage({reportId,patientId,onBack}){
         </div>
       }/>
 
-      {/* Tabs */}
-      <div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,padding:'0 16px',flexShrink:0}}>
-        {[{k:'relatorio',lb:'📄 Relatório'},{k:'revisao',lb:'✅ Revisão'}].map(({k,lb})=>(
-          <button key={k} onClick={()=>setTab(k)} style={{padding:'12px 16px',background:'none',border:'none',borderBottom:tab===k?'2px solid '+V.forest:'2px solid transparent',color:tab===k?V.forest:V.ink3,fontSize:13,fontWeight:tab===k?600:400,cursor:'pointer',fontFamily:'inherit',transition:'color .2s'}}>{lb}</button>
-        ))}
-        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:4,paddingRight:4}}>
+      {/* Zoom */}
+      <div style={{display:'flex',justifyContent:'flex-end',background:V.white,borderBottom:'1px solid '+V.sand2,padding:'6px 16px',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:4}}>
           <button onClick={()=>adjZoom(-10)} title="Diminuir zoom" style={{background:'none',border:'1px solid '+V.sand3,borderRadius:6,width:28,height:28,cursor:'pointer',fontSize:15,color:V.ink3,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
           <span style={{fontSize:11,color:V.ink3,minWidth:36,textAlign:'center'}}>{zoom}%</span>
           <button onClick={()=>adjZoom(10)} title="Aumentar zoom" style={{background:'none',border:'1px solid '+V.sand3,borderRadius:6,width:28,height:28,cursor:'pointer',fontSize:15,color:V.ink3,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
@@ -886,21 +872,7 @@ function ReportViewPage({reportId,patientId,onBack}){
           </div>
         </div>}
 
-        {tab==='relatorio'&&<>
-          <Card style={{marginBottom:12}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div>
-                <Badge type={rpt.status==='reviewed'||rpt.status==='imported'?'done':'draft'} text={rpt.status==='reviewed'||rpt.status==='imported'?'Revisado ✓':'Rascunho'}/>
-                <div style={{fontSize:12,color:V.ink3,marginTop:6}}>{new Date(rpt.generated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div>
-              </div>
-              {ranMeta?.custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${ranMeta.custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
-            </div>
-          </Card>
           {(blocos&&blocos.length>0)?(<div style={{padding:'0 4px'}}>{blocos.map(b=>(<div key={b.id} style={{marginBottom:16,paddingBottom:16,borderBottom:'1px solid '+V.sand2}}><Markdown content={b.content}/></div>))}</div>):(<Markdown content={rpt.content_md||''}/>)}
-        </>}
-        {tab==='revisao'&&(revisao?<RevisaoCard revisao={revisao}/>:
-          <div style={{textAlign:'center',padding:40,color:V.ink3}}><div style={{fontSize:32,marginBottom:12}}>📋</div><div>Dados de revisão não disponíveis para este relatório</div></div>
-        )}
       </div>
       <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
     </div>
