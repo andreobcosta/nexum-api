@@ -1268,7 +1268,7 @@ function FilePreviewPage({patientId,fileId,onBack}){
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};
   const[rotation,setRotation]=useState(0);const[imgSrc,setImgSrc]=useState(null);const rotate=d=>setRotation(r=>((r+d)%360+360)%360);
   useEffect(()=>{apiFetch('/files/'+patientId+'/'+fileId+'/info').then(d=>{setInfo(d);setNewName(d.name||d.original_name||'');}).catch(console.error).finally(()=>setLoading(false));},[patientId,fileId]);
-  useEffect(()=>{if(!info)return;if(!info.file_type==='image')return;fetch(API+'/files/'+patientId+'/'+fileId+'/download',{headers:{'Authorization':'Bearer '+localStorage.getItem('nexum_token')}}).then(r=>r.blob()).then(blob=>setImgSrc(URL.createObjectURL(blob))).catch(()=>{});},[info]);
+  useEffect(()=>{if(!info||info.file_type!=='image')return;fetch(API+'/files/'+patientId+'/'+fileId+'/download',{headers:{'Authorization':'Bearer '+localStorage.getItem('nexum_token')}}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();}).then(blob=>{if(!blob||blob.size===0)throw new Error('vazio');setImgSrc(URL.createObjectURL(blob));}).catch(err=>{console.error('[Preview] Falha ao carregar imagem:',err.message);setImgSrc('fallback');});},[info]);
   const doDownload=async()=>{setDl(true);try{const r=await fetch(API+'/files/'+patientId+'/'+fileId+'/download',{headers:{'Authorization':'Bearer '+localStorage.getItem('nexum_token')}});if(!r.ok)throw new Error('Falha no download');const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=info.original_name||info.name;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}catch(e){console.error('[FilePreview] download:',e.message);}finally{setDl(false);}};
   const saveName=async()=>{const n=newName.trim();if(!n||n===info.name)return setEditName(false);setSavingName(true);try{await apiFetch('/files/'+patientId+'/'+fileId,{method:'PATCH',body:JSON.stringify({display_name:n})});setInfo(i=>({...i,name:n}));setToast({message:'Arquivo renomeado',type:'success'});setEditName(false);}catch(e){setToast({message:e.message,type:'error'});}finally{setSavingName(false);}};
   if(loading)return(<div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Arquivo" onBack={onBack}/><Spinner text="Carregando..."/></div>);
@@ -1299,9 +1299,9 @@ function FilePreviewPage({patientId,fileId,onBack}){
         <button onClick={()=>adjZoom(10)} title="Aumentar zoom" style={{background:'none',border:'1px solid #444',borderRadius:6,width:28,height:28,cursor:'pointer',fontSize:15,color:V.sand,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
       </div>}
       <div style={{flex:1,overflow:'auto',position:'relative'}}>
-        {info.file_type==='image'
+        {info.file_type==='image'&&imgSrc!=='fallback'
           ?<div style={{minHeight:'100%',display:'flex',alignItems:'center',justifyContent:'center',padding:40}}>
-            {imgSrc?<img src={imgSrc} style={{maxWidth:'90vw',maxHeight:'85vh',objectFit:'contain',transform:'rotate('+rotation+'deg)',transition:'transform 0.25s ease',display:'block'}} alt={info.name}/>:<Spinner text="Carregando imagem..."/>}
+            {imgSrc?<img src={imgSrc} onError={()=>setImgSrc('fallback')} style={{maxWidth:'90vw',maxHeight:'85vh',objectFit:'contain',transform:'rotate('+rotation+'deg)',transition:'transform 0.25s ease',display:'block'}} alt={info.name}/>:<Spinner text="Carregando imagem..."/>}
           </div>
           :info.preview_url
             ?<iframe src={info.preview_url} style={{width:'100%',height:'100%',border:'none',position:'absolute',inset:0}} title={info.name}/>
