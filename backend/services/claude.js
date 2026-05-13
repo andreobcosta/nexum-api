@@ -267,15 +267,13 @@ async function agentRedator(systemPromptRAN, patientInfo, dossie, onProgress, us
     ? dossie.raw_analysis
     : JSON.stringify(dossie, null, 2);
 
-  // Busca padrões profissionais ativos (ativo=true, ocorrencias>=3)
+  // Busca padrões profissionais ativos da subcoleção (status='ativo')
   let padroesAtivos = [];
   if (userEmail) {
     try {
       const db = getDb();
-      const settingsDoc = await db.collection('clinic_settings').doc(userEmail).get();
-      if (settingsDoc.exists) {
-        padroesAtivos = (settingsDoc.data().padroes_profissionais || []).filter(p => p.ativo === true);
-      }
+      const snap = await db.collection('clinic_settings').doc(userEmail).collection('padroes').where('status', '==', 'ativo').get();
+      padroesAtivos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) {
       console.warn('[Redator] Não carregou padrões profissionais:', e.message);
     }
@@ -605,15 +603,30 @@ async function extrairPadroesDoRelatorio({ db, patient_id, report_id, textoOrigi
     return;
   }
 
+  const padroesRef = db.collection('clinic_settings').doc(userEmail).collection('padroes');
+
+  // Cleanup: remover padrões rejeitados há mais de 30 dias
+  try {
+    const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000;
+    const rejSnap = await padroesRef.where('status', '==', 'rejeitado').get();
+    const expirados = rejSnap.docs.filter(d => {
+      const rej = d.data().rejeitado_em;
+      return rej && (Date.now() - new Date(rej).getTime()) > TRINTA_DIAS_MS;
+    });
+    await Promise.all(expirados.map(d => d.ref.delete()));
+    if (expirados.length > 0) console.log(`[Padroes] ${expirados.length} rejeitado(s) expirado(s) removido(s)`);
+  } catch (e) { console.warn('[Padroes] Falha no cleanup:', e.message); }
+
+  // Extração com texto COMPLETO — sem truncamento
   const prompt = `Você é um analisador de estilo profissional clínico.
 
 Compare o RELATÓRIO ORIGINAL (gerado por IA) com o RELATÓRIO EDITADO (corrigido pela profissional).
 
 RELATÓRIO ORIGINAL:
-${textoOriginal.slice(0, 6000)}
+${textoOriginal}
 
 RELATÓRIO EDITADO:
-${textoEditado.slice(0, 6000)}
+${textoEditado}
 
 Identifique APENAS padrões de ESTILO e ESTRUTURA que a profissional prefere.
 NUNCA extraia dados numéricos, nomes de pacientes, pontuações de testes ou conclusões diagnósticas específicas.
@@ -634,62 +647,69 @@ Retorne JSON puro (sem markdown):
 
 Regras críticas:
 - Máximo 8 padrões por relatório
-- Confiança "baixa" para mudanças que podem ser específicas do paciente
+- Confiança "baixa" para mudanças específicas do paciente (dados, nome, pontuação)
 - Se uma mudança contém dados numéricos ou nome do paciente, IGNORE
 - Foco em: tom, vocabulário preferido, ordem de seções, forma de introduzir análises`;
 
   const { text } = await callClaude(
     'Você extrai padrões de estilo profissional de relatórios clínicos. Retorne apenas JSON válido.',
-    prompt,
-    2000,
-    MODEL_SONNET
+    prompt, 2000, MODEL_SONNET
   );
 
   let padroes = [];
   try {
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
-    padroes = (parsed.padroes || []).filter(p =>
-      p.confianca !== 'baixa' && p.descricao && p.descricao.length > 10
-    );
-  } catch (e) {
-    console.error('[Padroes] Falha ao parsear resposta:', e.message);
-    return;
-  }
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    padroes = (parsed.padroes || []).filter(p => p.confianca !== 'baixa' && p.descricao && p.descricao.length > 10);
+  } catch (e) { console.error('[Padroes] Falha ao parsear:', e.message); return; }
 
-  if (padroes.length === 0) {
-    console.log('[Padroes] Nenhum padrão válido extraído');
-    return;
-  }
+  if (padroes.length === 0) { console.log('[Padroes] Nenhum padrão válido extraído'); return; }
 
-  const settingsRef = db.collection('clinic_settings').doc(userEmail);
-  const settingsDoc = await settingsRef.get();
-  const existing = settingsDoc.exists ? (settingsDoc.data().padroes_profissionais || []) : [];
+  // Carregar pendentes e ativos para comparação
+  const [pendSnap, ativoSnap] = await Promise.all([
+    padroesRef.where('status', '==', 'pendente').get(),
+    padroesRef.where('status', '==', 'ativo').get()
+  ]);
+  const pendentes = pendSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
+  const ativos = ativoSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }));
 
   const agora = new Date().toISOString();
+  const { v4: uuidv4 } = require('uuid');
+  const encontradosNestaBatch = new Set();
+
   for (const novoPadrao of padroes) {
-    const similar = existing.find(e =>
-      e.tipo === novoPadrao.tipo &&
-      e.instrumento === novoPadrao.instrumento &&
-      e.descricao.slice(0, 40) === novoPadrao.descricao.slice(0, 40)
-    );
-    if (similar) {
-      similar.ocorrencias = (similar.ocorrencias || 1) + 1;
-      similar.ultima_ocorrencia = agora;
-      if (similar.ocorrencias >= 3) similar.ativo = true;
+    const chave = (p) => p.tipo === novoPadrao.tipo && p.instrumento === novoPadrao.instrumento && p.descricao.slice(0, 40) === novoPadrao.descricao.slice(0, 40);
+    const simPend = pendentes.find(chave);
+    const simAtivo = ativos.find(chave);
+
+    if (simPend) {
+      encontradosNestaBatch.add(simPend.id);
+      const consecutivas = (simPend.ocorrencias_consecutivas || 1) + 1;
+      const upd = { ocorrencias_consecutivas: consecutivas, ocorrencias_total: (simPend.ocorrencias_total || 1) + 1, ultima_ocorrencia: agora };
+      if (consecutivas >= 3) {
+        upd.status = 'ativo';
+        upd.aprovado_em = agora;
+        console.log(`[Padroes] Auto-aprovado (${consecutivas} consecutivas): ${novoPadrao.descricao.slice(0, 50)}`);
+      }
+      await simPend.ref.update(upd);
+    } else if (simAtivo) {
+      encontradosNestaBatch.add(simAtivo.id);
+      await simAtivo.ref.update({ ultima_ocorrencia: agora, ocorrencias_total: (simAtivo.ocorrencias_total || 1) + 1 });
     } else {
-      existing.push({
-        ...novoPadrao,
-        ocorrencias: 1,
-        ativo: false,
-        criado_em: agora,
-        ultima_ocorrencia: agora,
-        fonte_relatorio: report_id
+      // Padrão novo — inicia como pendente com 1 ocorrência consecutiva
+      await padroesRef.doc(uuidv4()).set({
+        ...novoPadrao, status: 'pendente', restaurado: false,
+        ocorrencias_consecutivas: 1, ocorrencias_total: 1,
+        criado_em: agora, ultima_ocorrencia: agora,
+        aprovado_em: null, rejeitado_em: null, fonte_relatorio: report_id
       });
     }
   }
 
-  await settingsRef.set({ padroes_profissionais: existing }, { merge: true });
+  // Padrões pendentes NÃO detectados neste import: zerar consecutividade (não é padrão)
+  const naoEncontrados = pendentes.filter(p => !encontradosNestaBatch.has(p.id));
+  await Promise.all(naoEncontrados.map(p => p.ref.update({ ocorrencias_consecutivas: 0 })));
+  if (naoEncontrados.length > 0) console.log(`[Padroes] ${naoEncontrados.length} padrão(ões) com consecutividade zerada`);
+
   console.log(`[Padroes] ${padroes.length} padrão(ões) processado(s) para ${userEmail}`);
 }
 

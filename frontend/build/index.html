@@ -1145,18 +1145,58 @@ function CostsPage({onBack}){
   )
 }
 
+/* ── COMPONENTE: CARD DE PADRÃO DE APRENDIZADO ── */
+function PadraoCuradoria({p,onAprovar,onRejeitar,onRestaurar,acionando}){
+  const TIPO_COR={estilo:V.blue,estrutura:V.forest,interpretacao:V.amber,encaminhamento:V.coral};
+  const cor=TIPO_COR[p.tipo]||V.ink3;
+  const busy=acionando===p.id;
+  const dtCriado=new Date(p.criado_em||Date.now()).toLocaleDateString('pt-BR');
+  const dtExpira=p.rejeitado_em?new Date(new Date(p.rejeitado_em).getTime()+30*24*60*60*1000).toLocaleDateString('pt-BR'):null;
+  return(
+    <div style={{background:V.white,borderRadius:14,border:'1px solid '+V.sand2,overflow:'hidden',marginBottom:10}}>
+      <div style={{padding:'10px 14px',borderBottom:'1px solid '+V.sand2,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+        <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:cor+'22',color:cor,textTransform:'uppercase',letterSpacing:'0.06em'}}>{p.tipo||'estilo'}</span>
+        {p.instrumento&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:V.sand2,color:V.ink3}}>{p.instrumento}</span>}
+        {p.restaurado&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:V.amberLight,color:V.amber,fontWeight:600}}>Restaurado</span>}
+        <span style={{flex:1}}/>
+        <span style={{fontSize:11,color:V.ink4}}>↺ {p.ocorrencias_consecutivas||1} consec. · {dtCriado}</span>
+      </div>
+      <div style={{padding:'12px 14px'}}>
+        <div style={{fontSize:13,color:V.ink,marginBottom:10,lineHeight:1.5}}>{p.descricao}</div>
+        {(p.exemplo_original||p.exemplo_editado)&&<div style={{background:V.sand,borderRadius:8,padding:'10px 12px',fontSize:12,marginBottom:10,display:'flex',flexDirection:'column',gap:6}}>
+          {p.exemplo_original&&<div><span style={{fontSize:10,fontWeight:700,color:V.ink3,textTransform:'uppercase',marginRight:6}}>IA:</span><span style={{color:V.ink3,fontStyle:'italic'}}>"{p.exemplo_original}"</span></div>}
+          {p.exemplo_editado&&<div><span style={{fontSize:10,fontWeight:700,color:V.forest,textTransform:'uppercase',marginRight:6}}>Editado:</span><span style={{color:V.ink}}>"{p.exemplo_editado}"</span></div>}
+        </div>}
+        {p.status==='rejeitado'&&dtExpira&&<div style={{fontSize:11,color:V.red,marginBottom:8}}>Remove automaticamente em {dtExpira}</div>}
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          {p.status==='pendente'&&<button onClick={()=>onRejeitar(p.id)} disabled={busy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+V.sand3,background:'none',cursor:'pointer',fontSize:12,color:V.ink3,fontFamily:'inherit'}}>✗ Rejeitar</button>}
+          {p.status==='pendente'&&<button onClick={()=>onAprovar(p.id)} disabled={busy} style={{padding:'6px 14px',borderRadius:8,border:'none',background:V.forest,color:V.white,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>{busy?'...':'✓ Aprovar'}</button>}
+          {p.status==='ativo'&&<button onClick={()=>onRejeitar(p.id)} disabled={busy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+V.red+'44',background:'none',cursor:'pointer',fontSize:12,color:V.red,fontFamily:'inherit'}}>{busy?'...':'✗ Rejeitar'}</button>}
+          {p.status==='rejeitado'&&<button onClick={()=>onRestaurar(p.id)} disabled={busy} style={{padding:'6px 14px',borderRadius:8,border:'1px solid '+V.forest,background:'none',cursor:'pointer',fontSize:12,color:V.forest,fontFamily:'inherit'}}>{busy?'...':'🔄 Restaurar'}</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── PAGE: SETTINGS ── */
 function SettingsPage({onBack,onAdmin}){
   const[form,setForm]=useState({logo_url:'',logo_base64:''});
   const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};
   const[logoScale,setLogoScale]=useState(100);const[logoOriginal,setLogoOriginal]=useState('');
   const[cats,setCats]=useState([]);const[catSaving,setCatSaving]=useState(false);const[newCatLabel,setNewCatLabel]=useState('');
+  const[padroes,setPadroes]=useState([]);const[loadingPadroes,setLoadingPadroes]=useState(false);const[filtroPadrao,setFiltroPadrao]=useState('pendente');const[acionando,setAcionando]=useState(null);
   useEffect(()=>{apiFetch('/settings/layout').then(d=>{setForm({logo_url:d.logo_url||'',logo_base64:d.logo_base64||''});if(d.logo_base64)setLogoOriginal(d.logo_base64);}).catch(()=>{}).finally(()=>setLoading(false));},[]);
   useEffect(()=>{apiFetch('/settings/categorias').then(d=>setCats(d.categorias||[])).catch(()=>{});},[]);
+  useEffect(()=>{setLoadingPadroes(true);apiFetch('/settings/padroes').then(d=>setPadroes(d.padroes||[])).catch(()=>{}).finally(()=>setLoadingPadroes(false));},[]);
   const save=async()=>{setSaving(true);try{await apiFetch('/settings/layout',{method:'PUT',body:JSON.stringify(form)});setToast({message:'Identidade visual salva!',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setSaving(false);}};
   const addCat=()=>{const lbl=newCatLabel.trim();if(!lbl)return;const key=lbl.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')||'cat_'+Date.now();setCats(c=>[...c,{key,label:lbl}]);setNewCatLabel('');};
   const removeCat=(key)=>setCats(c=>c.filter(x=>x.key!==key));
   const saveCats=async()=>{setCatSaving(true);try{await apiFetch('/settings/categorias',{method:'PUT',body:JSON.stringify({categorias:cats})});setToast({message:'Categorias salvas!',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setCatSaving(false);}};
+  const recarregarPadroes=()=>{setLoadingPadroes(true);apiFetch('/settings/padroes').then(d=>setPadroes(d.padroes||[])).catch(()=>{}).finally(()=>setLoadingPadroes(false));};
+  const aprovarPadrao=async(id)=>{setAcionando(id);try{await apiFetch('/settings/padroes/'+id+'/aprovar',{method:'POST'});recarregarPadroes();setToast({message:'Padrão aprovado e ativo!',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setAcionando(null);}};
+  const rejeitarPadrao=async(id)=>{setAcionando(id);try{await apiFetch('/settings/padroes/'+id+'/rejeitar',{method:'POST'});recarregarPadroes();setToast({message:'Padrão rejeitado.',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setAcionando(null);}};
+  const restaurarPadrao=async(id)=>{setAcionando(id);try{await apiFetch('/settings/padroes/'+id+'/restaurar',{method:'POST'});recarregarPadroes();setToast({message:'Padrão restaurado — aguarda curadoria.',type:'success'});}catch(e){setToast({message:e.message,type:'error'});}finally{setAcionando(null);}};
   const inp={width:'100%',padding:'12px 14px',border:'1.5px solid '+V.sand3,borderRadius:12,fontSize:15,background:V.white,outline:'none',color:V.ink};
   const lb={fontSize:12,fontWeight:600,color:V.ink3,marginBottom:6,display:'block',textTransform:'uppercase',letterSpacing:'0.04em'};
   const resizarImagem=(dataUrl,scale,cb)=>{const img=new Image();img.onload=function(){const maxW=400*(scale/100),maxH=120*(scale/100);const ratio=Math.min(maxW/img.width,maxH/img.height,1);const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*ratio);canvas.height=Math.round(img.height*ratio);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);cb(canvas.toDataURL('image/png'));};img.src=dataUrl;};
@@ -1197,6 +1237,21 @@ function SettingsPage({onBack,onAdmin}){
             <button onClick={addCat} style={{padding:'10px 16px',background:V.forest,color:V.white,border:'none',borderRadius:12,cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:600,flexShrink:0}}>+</button>
           </div>
           <Btn onClick={saveCats} loading={catSaving} full>Salvar categorias</Btn>
+        </div>
+        <div style={{background:V.white,borderRadius:16,padding:20,marginBottom:16,display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{fontSize:13,fontWeight:700,color:V.ink,letterSpacing:'0.04em',textTransform:'uppercase'}}>Aprendizado da IA</div>
+            <button onClick={recarregarPadroes} title="Atualizar" style={{background:'none',border:'none',color:V.ink3,cursor:'pointer',fontSize:15,padding:'2px 6px',fontFamily:'inherit'}}>↺</button>
+          </div>
+          <div style={{fontSize:12,color:V.ink3}}>Padrões de escrita identificados a partir das suas edições. Aprove para incorporar nas próximas RANs.</div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button onClick={()=>setFiltroPadrao('pendente')} style={{padding:'6px 14px',borderRadius:20,border:'none',background:filtroPadrao==='pendente'?V.amber+'22':'transparent',color:filtroPadrao==='pendente'?V.amber:V.ink3,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>{'Pendente ('+padroes.filter(p=>p.status==='pendente').length+')'}</button>
+            <button onClick={()=>setFiltroPadrao('ativo')} style={{padding:'6px 14px',borderRadius:20,border:'none',background:filtroPadrao==='ativo'?V.forest+'22':'transparent',color:filtroPadrao==='ativo'?V.forest:V.ink3,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>{'Ativo ('+padroes.filter(p=>p.status==='ativo').length+')'}</button>
+            <button onClick={()=>setFiltroPadrao('rejeitado')} style={{padding:'6px 14px',borderRadius:20,border:'none',background:filtroPadrao==='rejeitado'?V.red+'22':'transparent',color:filtroPadrao==='rejeitado'?V.red:V.ink3,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit'}}>{'Rejeitado ('+padroes.filter(p=>p.status==='rejeitado').length+')'}</button>
+          </div>
+          <div style={{display:'flex',flexDirection:'column'}}>
+            {loadingPadroes?<Spinner text="Carregando padrões..."/>:padroes.filter(p=>p.status===filtroPadrao).length===0?<div style={{textAlign:'center',padding:'20px 0',color:V.ink3,fontSize:13}}>{'Nenhum padrão '+filtroPadrao+' no momento.'}</div>:padroes.filter(p=>p.status===filtroPadrao).map(p=><PadraoCuradoria key={p.id} p={p} onAprovar={aprovarPadrao} onRejeitar={rejeitarPadrao} onRestaurar={restaurarPadrao} acionando={acionando}/>)}
+          </div>
         </div>
         {onAdmin&&<button onClick={onAdmin} style={{width:'100%',padding:'12px 16px',borderRadius:12,border:'1px solid '+V.sand3,background:'none',cursor:'pointer',fontSize:13,color:V.ink3,fontFamily:'inherit',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>🔧 Administração do sistema<span style={{color:V.ink4}}>›</span></button>}
       </div>

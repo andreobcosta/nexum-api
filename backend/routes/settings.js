@@ -66,4 +66,50 @@ router.put('/categorias', async (req, res) => {
   }
 });
 
+// ── CURADORIA DE PADRÕES DE APRENDIZADO ──
+
+// GET /api/settings/padroes — lista todos os padrões do profissional
+router.get('/padroes', async (req, res) => {
+  try {
+    const db = getDb();
+    const snap = await db.collection('clinic_settings').doc(req.user.email).collection('padroes').get();
+    const padroes = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.criado_em || '').localeCompare(a.criado_em || ''));
+    res.json({ padroes });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/settings/padroes/:id/aprovar
+router.post('/padroes/:id/aprovar', async (req, res) => {
+  try {
+    const db = getDb();
+    const ref = db.collection('clinic_settings').doc(req.user.email).collection('padroes').doc(req.params.id);
+    if (!(await ref.get()).exists) return res.status(404).json({ error: 'Padrão não encontrado' });
+    await ref.update({ status: 'ativo', aprovado_em: new Date().toISOString(), restaurado: false });
+    res.json({ message: 'Padrão aprovado e ativo' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/settings/padroes/:id/rejeitar
+router.post('/padroes/:id/rejeitar', async (req, res) => {
+  try {
+    const db = getDb();
+    const ref = db.collection('clinic_settings').doc(req.user.email).collection('padroes').doc(req.params.id);
+    if (!(await ref.get()).exists) return res.status(404).json({ error: 'Padrão não encontrado' });
+    await ref.update({ status: 'rejeitado', rejeitado_em: new Date().toISOString() });
+    res.json({ message: 'Padrão rejeitado' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/settings/padroes/:id/restaurar — volta para pendente com badge "Restaurado"
+router.post('/padroes/:id/restaurar', async (req, res) => {
+  try {
+    const db = getDb();
+    const ref = db.collection('clinic_settings').doc(req.user.email).collection('padroes').doc(req.params.id);
+    if (!(await ref.get()).exists) return res.status(404).json({ error: 'Padrão não encontrado' });
+    await ref.update({ status: 'pendente', restaurado: true, rejeitado_em: null, ocorrencias_consecutivas: 0 });
+    res.json({ message: 'Padrão restaurado — aguarda curadoria' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
