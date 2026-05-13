@@ -190,6 +190,28 @@ function cellaParaRuns(cellText, bold, color) {
   return segments.map(s => new TextRun(s));
 }
 
+// Divide o conteúdo de uma célula em múltiplos parágrafos — permite quebra de página dentro da célula
+function cellaParaParagrafos(cellText, bold, color) {
+  const size = 18;
+  const font = 'Arial';
+  const linhas = cellText.split(/<br\s*\/?>/gi).flatMap(l => l.split('\n'));
+  const paragrafos = linhas.map(linha => {
+    const parts = linha.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+    const runs = parts.map(p => {
+      const isBold = p.startsWith('**') && p.endsWith('**');
+      const isItalic = !isBold && p.startsWith('*') && p.endsWith('*');
+      const txt = isBold ? p.slice(2, -2) : isItalic ? p.slice(1, -1) : p;
+      return new TextRun({ text: txt, bold: bold || isBold, italics: isItalic, color, size, font });
+    });
+    return new Paragraph({
+      alignment: AlignmentType.LEFT,
+      spacing: { before: 0, after: 0 },
+      children: runs.length ? runs : [new TextRun({ text: '', size, font, color })]
+    });
+  });
+  return paragrafos.length ? paragrafos : [new Paragraph({ children: [new TextRun({ text: cellText, bold, color, size, font })] })];
+}
+
 function eLabelContentTable(rows) {
   if (rows.length < 2) return false;
   const dataRows = rows.slice(1);
@@ -211,6 +233,7 @@ function gerarTabela(rows) {
     layout: TableLayoutType.FIXED,
     rows: rows.map((cells, rowIdx) =>
       new TableRow({
+        cantSplit: false,
         children: cells.map((cellText, colIdx) =>
           new TableCell({
             width: { size: colWidths[colIdx], type: WidthType.DXA },
@@ -222,10 +245,7 @@ function gerarTabela(rows) {
                 ? { fill: 'F3F0EB', type: ShadingType.CLEAR }
                 : { fill: BRANCO, type: ShadingType.CLEAR },
             verticalAlign: VerticalAlign.TOP,
-            children: [new Paragraph({
-              alignment: AlignmentType.LEFT,
-              children: cellaParaRuns(cellText, rowIdx === 0 || colIdx === 0, rowIdx === 0 ? BRANCO : '2C2C2A')
-            })]
+            children: cellaParaParagrafos(cellText, rowIdx === 0 || colIdx === 0, rowIdx === 0 ? BRANCO : '2C2C2A')
           })
         )
       })
