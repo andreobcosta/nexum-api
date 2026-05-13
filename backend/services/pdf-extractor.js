@@ -192,13 +192,22 @@ async function processDataPackage(rawDataPackage) {
       try {
         // Caso 1: Arquivo já tem transcrição (áudio transcrito)
         if (file.transcription) {
+          // Defensive: extrai string se transcription foi salvo como objeto (bug B5 em files.js — fixed)
+          const transcricaoStr = typeof file.transcription === 'object'
+            ? (file.transcription.transcricao || '')
+            : file.transcription;
+          if (!transcricaoStr || !transcricaoStr.trim()) {
+            log.push(`⚠ ${file.name} — transcrição corrompida (objeto sem texto útil)`);
+            filesSkipped++;
+            continue;
+          }
           processed[folderName].push({
             name: file.name,
             type: 'transcricao_audio',
-            content: file.transcription,
+            content: transcricaoStr,
             source: 'firestore_transcription'
           });
-          log.push(`✓ ${file.name} — transcrição de áudio (${file.transcription.length} chars)`);
+          log.push(`✓ ${file.name} — transcrição de áudio (${transcricaoStr.length} chars)`);
           filesProcessed++;
           continue;
         }

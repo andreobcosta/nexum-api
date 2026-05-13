@@ -28,15 +28,17 @@ async function transcribeInBackground(patient_id, fileId, driveFileId, subfolder
     tempPath = path.join(__dirname, '..', 'temp', 'transcribe_' + uuidv4());
     fs.writeFileSync(tempPath, buffer);
 
-    const transcription = await transcribeAudio(tempPath, mimeType, originalName);
+    const resultado = await transcribeAudio(tempPath, mimeType, originalName);
+    const transcricao = resultado.transcricao;
+    const comprimido = resultado.comprimido;
     const now = new Date().toISOString();
 
-    await fileRef.update({ transcription, status: 'transcribed', transcribed_at: now });
+    await fileRef.update({ transcription: transcricao, transcricao_comprimida: comprimido || null, status: 'transcribed', transcribed_at: now });
 
     // Salva .txt no Drive
     try {
       const txtName = originalName.replace(/\.[^.]+$/, '') + '_transcricao.txt';
-      const txtBuffer = Buffer.from('TRANSCRICAO — ' + originalName + '\nGerada em: ' + now + '\n\n' + transcription, 'utf-8');
+      const txtBuffer = Buffer.from('TRANSCRICAO — ' + originalName + '\nGerada em: ' + now + '\n\n' + transcricao, 'utf-8');
       await drive.uploadBuffer(txtBuffer, txtName, 'text/plain', subfolderId);
     } catch (e) {
       console.warn('[AUTO-TRANSCRIÇÃO] Nao salvou .txt no Drive:', e.message);
