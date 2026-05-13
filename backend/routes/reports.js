@@ -5,6 +5,60 @@ const { getDb } = require('../db/firestore');
 const drive = require('../services/drive');
 const claude = require('../services/claude');
 
+// ── HELPERS DE VERSÃO ──
+function parseMajorMinor(v) {
+  const s = String(v || '1');
+  const parts = s.split('.');
+  const major = parseInt(parts[0]) || 1;
+  const minor = parts.length > 1 ? (parseInt(parts[1]) || 0) : 0;
+  return { major, minor };
+}
+
+function calcularProximaVersaoMaior(relatorios) {
+  if (!relatorios || relatorios.length === 0) return '1.0';
+  const maiorMajor = Math.max(...relatorios.map(r => parseMajorMinor(r.version).major));
+  return `${maiorMajor + 1}.0`;
+}
+
+function calcularProximaSubversao(relatorios) {
+  if (!relatorios || relatorios.length === 0) return '1.1';
+  const versoes = relatorios.map(r => parseMajorMinor(r.version));
+  const maiorMajor = Math.max(...versoes.map(v => v.major));
+  const minorsDesteGrupo = versoes.filter(v => v.major === maiorMajor).map(v => v.minor);
+  return `${maiorMajor}.${Math.max(...minorsDesteGrupo) + 1}`;
+}
+
+function sortRelatorios(relatorios) {
+  return relatorios.slice().sort((a, b) => {
+    const va = parseMajorMinor(a.version), vb = parseMajorMinor(b.version);
+    return vb.major !== va.major ? vb.major - va.major : vb.minor - va.minor;
+  });
+}
+
+function extrairDadosPacienteDoRAN(contentMd) {
+  if (!contentMd) return {};
+  const updates = {};
+  const toTC = s => s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substr(1).toLowerCase());
+  const clean = t => t.replace(/[|*]/g, '').trim();
+  for (const linha of contentMd.split('\n')) {
+    const nome = linha.match(/Nome da Crian[çc]a\s*:\s*(.+)/i);
+    if (nome) { const n = clean(nome[1]); if (n && n.length > 2 && !n.includes('[')) updates.full_name = toTC(n); }
+    const nasc = linha.match(/Data de Nascimento\s*:\s*([\d\/]+)/i);
+    if (nasc) { const [d, m, y] = nasc[1].split('/'); if (y) updates.birth_date = `${y}-${(m||'01').padStart(2,'0')}-${(d||'01').padStart(2,'0')}`; }
+    const idade = linha.match(/Idade\s*:\s*(\d+)/i) || linha.match(/\b(\d+)\s*ANOS\b/);
+    if (idade) updates.age = parseInt(idade[1]);
+    const escol = linha.match(/Escolaridade\s*:\s*(.+)/i);
+    if (escol) { const e = clean(escol[1]); if (e && !e.includes('[')) updates.grade = toTC(e); }
+    const dom = linha.match(/Domin[âa]ncia\s*(?:manual)?\s*:\s*(.+)/i);
+    if (dom) { const d = clean(dom[1]).toLowerCase(); if (d && !d.includes('[')) updates.handedness = d.includes('destra')||d.includes('direita') ? 'Destro' : d.includes('sinistra')||d.includes('esquerda') ? 'Canhoto' : toTC(clean(dom[1])); }
+    const med = linha.match(/Faz uso de medicamentos\??\s*(.+)/i);
+    if (med) { const m = clean(med[1]).toLowerCase(); if (!m.includes('[')) updates.medications = (m==='não'||m==='nao') ? '' : clean(med[1]); }
+    const resp = linha.match(/Respons[áa]veis\s*:\s*(.+)/i);
+    if (resp) { const r = clean(resp[1]); if (r && !r.includes('[')) updates.guardians = toTC(r); }
+  }
+  return updates;
+}
+
 // POST /api/reports/generate/:patient_id
 router.post('/generate/:patient_id', async (req, res) => {
   try {
@@ -185,7 +239,7 @@ router.post('/generate/:patient_id', async (req, res) => {
         const ranMeta = { dossie: ranResult.dossie, revisao: ranResult.revisao, custos: ranResult.custos, extraction_meta: ranResult.extraction_meta, elapsed_seconds: ranResult.elapsed_seconds };
 
         const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
-        const version = reportsSnap.size + 1;
+        const version = calcularProximaVersaoMaior(reportsSnap.docs.map(d => d.data()));
         const reportId = uuidv4();
         const now = new Date().toISOString();
 
@@ -226,6 +280,15 @@ router.post('/generate/:patient_id', async (req, res) => {
 
         await jobRef.update({ status: 'concluido', etapa: 'Relatório gerado', agente: 'concluido', report_id: reportId, score_qualidade: ranResult.revisao?.score_qualidade, completed_at: now });
 
+        // Sincronizar dados do paciente com o que o pipeline extraiu dos documentos clínicos
+        try {
+          const dadosPaciente = extrairDadosPacienteDoRAN(reportContent);
+          if (Object.keys(dadosPaciente).length > 0) {
+            await db.collection('patients').doc(req.params.patient_id).update({ ...dadosPaciente, updated_at: now });
+            console.log('[Reports] Dados do paciente sincronizados do RAN:', Object.keys(dadosPaciente).join(', '));
+          }
+        } catch (e) { console.warn('[Reports] Falha ao sincronizar dados do paciente:', e.message); }
+
       } catch (bgErr) {
         console.error('[Pipeline] Erro em background:', bgErr);
         await jobRef.update({ status: 'erro', erro: bgErr.message }).catch(() => {});
@@ -244,8 +307,8 @@ router.post('/generate/:patient_id', async (req, res) => {
 router.get('/patient/:patient_id', async (req, res) => {
   try {
     const db = getDb();
-    const snap = await db.collection('patients').doc(req.params.patient_id).collection('reports').orderBy('version', 'desc').get();
-    const reports = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
+    const reports = sortRelatorios(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     res.json(reports);
   } catch (err) {
     console.error(err);
@@ -449,16 +512,9 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     const reportContent = ranResult.relatorio;
     const ranMeta = { diff: ranResult.diff, revisao: ranResult.revisao, elapsed_seconds: ranResult.elapsed_seconds, updated_from: req.params.report_id };
 
-    // Subversão: usa version do relatório base (ex: 1 → 1.1, 1.1 → 1.2)
-    const baseVersion = reportExistente.version || 1;
-    const baseInt = parseInt(String(baseVersion).split('.')[0]);
+    // Subversão sempre baseada na versão maior mais recente entre todos os relatórios
     const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
-    const subversoes = reportsSnap.docs.filter(d => {
-      const v = String(d.data().version || '');
-      return v.startsWith(baseInt + '.') || v === String(baseInt);
-    });
-    const proximaSub = subversoes.length;
-    const version = baseInt + '.' + proximaSub;
+    const version = calcularProximaSubversao(reportsSnap.docs.map(d => d.data()));
     const reportId = uuidv4();
     const now = new Date().toISOString();
 
@@ -788,22 +844,17 @@ router.post('/:patient_id/:report_id/import-edited',
       ].join('\n');
       const conteudoFinal = cabecalhoGerado + '\n\n' + corpo;
 
-      // Calcular subversão X.Y
-      const baseVersion = report.version || 1;
-      const baseInt = parseInt(String(baseVersion).split('.')[0]);
+      // Subversão sempre baseada na versão maior mais recente entre todos os relatórios
       const reportsSnap = await db.collection('patients').doc(patient_id).collection('reports').get();
-      const subversoes = reportsSnap.docs.filter(d => {
-        const v = String(d.data().version || '');
-        return v.startsWith(baseInt + '.') || v === String(baseInt);
-      });
-      const novaVersion = baseInt + '.' + subversoes.length;
+      const novaVersion = calcularProximaSubversao(reportsSnap.docs.map(d => d.data()));
       const novoReportId = require('uuid').v4();
       const now = new Date().toISOString();
 
       // Salvar nova subversão
       await db.collection('patients').doc(patient_id).collection('reports').doc(novoReportId).set({
         patient_id, version: novaVersion,
-        content_md: conteudoFinal, status: 'imported',
+        content_md: conteudoFinal, status: 'reviewed',
+        reviewed_at: now,
         imported_at: now, imported_from: req.file?.originalname || 'docx',
         sync_source: 'import', generated_at: now,
         base_version: baseVersion,
@@ -813,6 +864,15 @@ router.post('/:patient_id/:report_id/import-edited',
       });
 
       res.json({ message: 'Relatório importado com sucesso', imported_at: now, version: novaVersion });
+
+      // Sincronizar dados do paciente com o conteúdo revisado pelo profissional
+      try {
+        const dadosPaciente = extrairDadosPacienteDoRAN(conteudoFinal);
+        if (Object.keys(dadosPaciente).length > 0) {
+          await db.collection('patients').doc(patient_id).update({ ...dadosPaciente, updated_at: now });
+          console.log('[ImportEdit] Dados do paciente sincronizados:', Object.keys(dadosPaciente).join(', '));
+        }
+      } catch (e) { console.warn('[ImportEdit] Falha ao sincronizar dados do paciente:', e.message); }
 
       // Extrair padrões em background
       setImmediate(async () => {

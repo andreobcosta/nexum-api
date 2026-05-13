@@ -660,7 +660,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
                     </div>
                   </div>
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                    <Badge type="draft" text="Rascunho"/>
+                    <Badge type={r.status==='reviewed'||r.status==='imported'?'done':'draft'} text={r.status==='reviewed'||r.status==='imported'?'Revisado ✓':'Rascunho'}/>
                     <button onClick={()=>setConfirmDel({id:r.id,version:r.version})} title="Remover relatório" style={{background:'none',border:'none',color:V.ink4,cursor:'pointer',fontSize:16,padding:4}}>🗑</button>
                   </div>
                 </div>
@@ -888,13 +888,12 @@ function ReportViewPage({reportId,patientId,onBack}){
           <Card style={{marginBottom:12}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div>
-                <Badge type={rpt.status==='reviewed'?'done':'draft'} text={rpt.status==='reviewed'?'Revisado':'Rascunho'}/>
+                <Badge type={rpt.status==='reviewed'||rpt.status==='imported'?'done':'draft'} text={rpt.status==='reviewed'||rpt.status==='imported'?'Revisado ✓':'Rascunho'}/>
                 <div style={{fontSize:12,color:V.ink3,marginTop:6}}>{new Date(rpt.generated_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div>
               </div>
               {ranMeta?.custos&&<div style={{textAlign:'right',marginLeft:12}}><div style={{fontSize:13,fontWeight:600,color:V.ink2}}>${ranMeta.custos.total_usd?.toFixed(3)}</div><div style={{fontSize:10,color:V.ink3}}>custo USD</div></div>}
             </div>
           </Card>
-          {patient&&<div style={{background:V.white,borderRadius:14,border:'1px solid '+V.sand2,marginBottom:16,overflow:'hidden'}}>{[['Nome completo',patient.full_name],['Data de nascimento / Idade',(patient.birth_date?new Date(patient.birth_date+'T12:00:00').toLocaleDateString('pt-BR'):'—')+' | '+(patient.age?patient.age+' anos':'—')],['Escolaridade',patient.grade||'—'],['Dominância manual',patient.handedness||'—'],['Medicamentos',patient.medications||'—'],['Responsáveis',patient.guardians||'—']].map(([k,v])=>(<div key={k} style={{display:'grid',gridTemplateColumns:'200px 1fr',borderBottom:'1px solid '+V.sand2}}><div style={{padding:'8px 12px',background:'#F3F0EB',fontSize:12,fontWeight:600,color:V.forest}}>{k}</div><div style={{padding:'8px 12px',fontSize:12,color:V.ink}}>{v}</div></div>))}</div>}
           {(blocos&&blocos.length>0)?(<div style={{padding:'0 4px'}}>{blocos.map(b=>(<div key={b.id} style={{marginBottom:16,paddingBottom:16,borderBottom:'1px solid '+V.sand2}}><Markdown content={b.content}/></div>))}</div>):(<Markdown content={rpt.content_md||''}/>)}
         </>}
         {tab==='revisao'&&(revisao?<RevisaoCard revisao={revisao}/>:
