@@ -228,6 +228,39 @@ router.get('/patient/:patient_id', async (req, res) => {
   }
 });
 
+// DELETE /api/files/:patient_id/:file_id — remove arquivo do Firestore e do Drive
+router.delete('/:patient_id/:file_id', async (req, res) => {
+  try {
+    const db = getDb();
+    const ref = db.collection('patients').doc(req.params.patient_id).collection('files').doc(req.params.file_id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Arquivo não encontrado' });
+    const file = doc.data();
+
+    // Remove do Drive (falha silenciosa — não bloqueia a exclusão local)
+    if (file.drive_file_id) {
+      await drive.deleteFile(file.drive_file_id).catch(e => console.warn('[Files] deleteFile Drive falhou:', e.message));
+    }
+
+    // Remove do Firestore
+    await ref.delete();
+
+    // Decrementa contador desnormalizado no paciente
+    const cat = file.category || file.categoria;
+    if (cat && ['anamnese', 'teste', 'sessao', 'externo'].includes(cat)) {
+      await db.collection('patients').doc(req.params.patient_id).update({
+        [cat + '_count']: FieldValue.increment(-1),
+        updated_at: new Date().toISOString()
+      }).catch(e => console.warn('[Files] decremento contador falhou:', e.message));
+    }
+
+    res.json({ message: 'Arquivo excluído' });
+  } catch (err) {
+    console.error('[Files] DELETE:', err.message);
+    res.status(500).json({ error: 'Erro ao excluir arquivo', details: err.message });
+  }
+});
+
 // PATCH /api/files/:patient_id/:file_id — renomear display_name ou trocar categoria
 router.patch('/:patient_id/:file_id', async (req, res) => {
   try {

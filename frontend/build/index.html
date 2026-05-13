@@ -45,11 +45,11 @@ input,select,textarea,button{font-family:inherit;-webkit-appearance:none}
 @keyframes progressFill{from{width:0}to{width:100%}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 
-/* ── ZOOM RESPONSIVO — desktop: escala toda a UI proporcionalmente ── */
-@media (min-width: 768px)  { body { zoom: 1.25; } }
-@media (min-width: 1024px) { body { zoom: 1.4;  } }
-@media (min-width: 1280px) { body { zoom: 1.5;  } }
-@media (min-width: 1600px) { body { zoom: 1.65; } }
+/* ── LAYOUT DESKTOP — container centralizado, sem zoom ── */
+@media (min-width: 768px) {
+  body { background: #ccc9be; display: flex; justify-content: center; align-items: stretch; }
+  #root { max-width: 820px; width: 100%; box-shadow: 0 0 60px rgba(0,0,0,0.18); flex-shrink: 0; }
+}
 
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -520,10 +520,10 @@ function FileItem({f,patientId,onDeleted,onCategoryChanged,onError,onPreviewFile
           {FILE_CATS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
       </div>
-      <div style={{display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
-        <button onClick={startRename} title="Renomear" style={{background:'none',border:'none',cursor:'pointer',fontSize:13,padding:'4px',color:V.ink4,flexShrink:0}}>✏️</button>
-        <button onClick={del} disabled={deleting} title={confirm?'Confirmar exclusão':'Excluir'} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:13,padding:'4px',borderRadius:6,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400}}>
-          {deleting?'...':confirm?'✓':'🗑'}
+      <div style={{display:'flex',gap:6,justifyContent:'flex-end',alignItems:'center'}}>
+        <button onClick={startRename} title="Renomear" style={{background:'none',border:'none',cursor:'pointer',fontSize:16,padding:'6px',color:V.ink4,flexShrink:0,lineHeight:1}}>✏️</button>
+        <button onClick={del} disabled={deleting} title={confirm?'Confirmar exclusão':'Excluir'} style={{background:confirm?V.redLight:'none',border:'none',color:confirm?V.red:V.ink4,cursor:'pointer',fontSize:confirm?12:16,padding:'6px',borderRadius:6,flexShrink:0,fontFamily:'inherit',fontWeight:confirm?600:400,lineHeight:1}}>
+          {deleting?'...':confirm?'✓ Confirmar':'🗑'}
         </button>
       </div>
     </div>
