@@ -20,6 +20,18 @@ const CATEGORY_TO_FOLDER = {
 };
 
 function getAuth() {
+  // OAuth2 pessoal tem prioridade: Service Account não tem quota em My Drive pessoal (Gmail).
+  // Service Account só funciona com Shared Drive ou Domain-Wide Delegation (Google Workspace).
+  if (process.env.GOOGLE_REFRESH_TOKEN) {
+    const auth = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+    return auth;
+  }
+  // Fallback: Service Account (para Shared Drive ou Workspace com Domain-Wide Delegation)
   if (process.env.GOOGLE_DRIVE_SA_KEY) {
     try {
       const credentials = JSON.parse(process.env.GOOGLE_DRIVE_SA_KEY);
@@ -28,17 +40,10 @@ function getAuth() {
         scopes: ['https://www.googleapis.com/auth/drive']
       });
     } catch (e) {
-      console.error('[Drive] Falha ao parsear GOOGLE_DRIVE_SA_KEY — usando OAuth2 como fallback:', e.message);
+      console.error('[Drive] Falha ao parsear GOOGLE_DRIVE_SA_KEY:', e.message);
     }
   }
-  // Fallback: OAuth2 pessoal (local dev)
-  const auth = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
-  );
-  auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
-  return auth;
+  throw new Error('[Drive] Nenhuma credencial configurada (GOOGLE_REFRESH_TOKEN ou GOOGLE_DRIVE_SA_KEY)');
 }
 
 function getDrive() {
