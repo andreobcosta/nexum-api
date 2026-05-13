@@ -429,28 +429,41 @@ function gerarBlocoIdentificacaoDireto(p) {
 }
 
 function gerarBlocoIdentificacao(linhasSecao1) {
-  // Extrai dados do cabeçalho da seção 1
-  const campo = (label) => {
-    const linha = linhasSecao1.find(l => l.includes(label));
-    if (!linha) return '[Não informado]';
-    return linha.split(':').slice(1).join(':').trim()
-      .replace(/\*\*/g, '').replace(/\[.*?\]/g, '').trim() || '[Não informado]';
+  const limpar = (s) => s.replace(/\*\*/g,'').replace(/\[.*?\]/g,'').trim();
+  // Extrai valor após "Label:" ou "Label?" numa linha
+  const campo = (...labels) => {
+    for (const label of labels) {
+      const linha = linhasSecao1.find(l => l.includes(label));
+      if (!linha) continue;
+      // Suporte a "Label:" e "Label?" como separadores
+      const sep = linha.includes(label + ':') ? label + ':' : label + '?';
+      const idx = linha.indexOf(sep);
+      if (idx < 0) continue;
+      const valor = limpar(linha.slice(idx + sep.length));
+      if (valor) return valor;
+    }
+    return '[Não informado]';
   };
 
-  const nome = campo('Nome da Criança') || campo('Nome');
+  const nome = campo('Nome da Criança', 'Nome:');
   let nascimento = '[Não informado]';
   let idade = '[Não informado]';
   const linhaNasc = linhasSecao1.find(l =>
     l.includes('Data de Nascimento') || l.includes('Data de nascimento') || l.includes('Nascimento')
   );
   if (linhaNasc) {
-    const valor = linhaNasc.split(':').slice(1).join(':').trim().replace(/\*\*/g,'').trim();
-    if (valor.includes('|')) {
-      const partes = valor.split('|').map(p => p.trim());
-      nascimento = partes[0].replace(/Idade:.*/i,'').trim() || '[Não informado]';
-      idade = partes[1]?.replace(/Idade:/i,'').trim() || '[Não informado]';
+    const idx = linhaNasc.search(/[Nn]ascimento\s*:/);
+    const rawValor = idx >= 0 ? limpar(linhaNasc.slice(linhaNasc.indexOf(':', idx) + 1)) : '';
+    if (rawValor.includes('|')) {
+      const partes = rawValor.split('|').map(p => p.trim());
+      nascimento = limpar(partes[0].replace(/Idade:.*/i, '')) || '[Não informado]';
+      idade = limpar((partes[1] || '').replace(/Idade:/i, '')) || '[Não informado]';
+    } else if (rawValor.match(/Idade:/i)) {
+      const partes = rawValor.split(/Idade:/i);
+      nascimento = limpar(partes[0]) || '[Não informado]';
+      idade = limpar(partes[1] || '') || '[Não informado]';
     } else {
-      nascimento = valor || '[Não informado]';
+      nascimento = rawValor || '[Não informado]';
     }
   }
   if (idade === '[Não informado]') {
@@ -458,14 +471,13 @@ function gerarBlocoIdentificacao(linhasSecao1) {
       l.match(/^Idade:/i) || (l.includes('Idade:') && !l.includes('Nascimento'))
     );
     if (linhaIdade) {
-      idade = linhaIdade.split(':').slice(1).join(':').trim()
-        .replace(/\*\*/g,'').replace(/\[.*?\]/g,'').trim() || '[Não informado]';
+      idade = limpar(linhaIdade.slice(linhaIdade.indexOf('Idade:') + 6)) || '[Não informado]';
     }
   }
   const escolaridade = campo('Escolaridade');
-  const dominancia = campo('Dominância');
-  const medicamentos = campo('medicamentos') || campo('Medicamentos');
-  const responsaveis = campo('Responsáveis') || campo('Responsavel');
+  const dominancia = campo('Dominância manual', 'Dominância', 'Dominancia');
+  const medicamentos = campo('Faz uso de medicamentos', 'Medicamentos em uso', 'Medicamentos', 'medicamentos');
+  const responsaveis = campo('Responsáveis', 'Responsavel', 'Responsáveis');
 
   const borderConfig = { style: BorderStyle.SINGLE, size: 4, color: BORDA };
   const borders = { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig };
@@ -523,12 +535,19 @@ async function gerarDocx(contentMd, nomeArquivo, userEmail, paciente = null) {
   // Monta bloco de identificação
   let blocoId;
   const linhas = contentMd.split('\n');
-  const inicioSecao2 = linhas.findIndex(l => l.startsWith('## ') && !l.includes('RELATÓRIO'));
-  const restoMd = inicioSecao2 > 0 ? linhas.slice(inicioSecao2).join('\n') : contentMd;
-  if (paciente) {
+  // Primeiro ## = cabeçalho/identificação; segundo ## = início do corpo do relatório
+  const primeiroH2 = linhas.findIndex(l => l.startsWith('## ') && !l.includes('RELATÓRIO'));
+  const segundoH2 = primeiroH2 >= 0
+    ? linhas.findIndex((l, idx) => idx > primeiroH2 && l.startsWith('## '))
+    : -1;
+  const inicioCorpo = segundoH2 > 0 ? segundoH2 : (primeiroH2 > 0 ? primeiroH2 : 0);
+  const restoMd = inicioCorpo > 0 ? linhas.slice(inicioCorpo).join('\n') : contentMd;
+  if (paciente && paciente.full_name) {
     blocoId = gerarBlocoIdentificacaoDireto(paciente);
   } else {
-    const linhasSecao1 = inicioSecao2 > 0 ? linhas.slice(0, inicioSecao2) : linhas.slice(0, 15);
+    // Fallback: extrai dados do corpo da seção 1 do RAN (inclui título + corpo de identificação)
+    const limiteSecao1 = segundoH2 > 0 ? segundoH2 : (primeiroH2 > 0 ? primeiroH2 + 25 : 30);
+    const linhasSecao1 = linhas.slice(0, limiteSecao1);
     blocoId = gerarBlocoIdentificacao(linhasSecao1);
   }
   const conteudo = parsearMarkdown(restoMd);

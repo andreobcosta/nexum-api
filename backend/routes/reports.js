@@ -251,7 +251,7 @@ router.post('/generate/:patient_id', async (req, res) => {
         try {
           const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, 'relatorio');
           const { gerarDocx } = require('../services/docx-generator');
-          const docxBuf = await gerarDocx(reportContent, nomeBase, null);
+          const docxBuf = await gerarDocx(reportContent, nomeBase, req.user.email, patient);
           const driveFile = await drive.uploadDocxAsGoogleDoc(docxBuf, reportFileName, subfolderId);
           driveFileId = driveFile.id;
           driveIsGoogleDoc = true;
@@ -526,7 +526,7 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     try {
       const subfolderId = await require('../services/drive').getSubfolderId(patient.drive_folder_id, 'relatorio');
       const { gerarDocx } = require('../services/docx-generator');
-      const docxBuf = await gerarDocx(reportContent, nomeBase, null);
+      const docxBuf = await gerarDocx(reportContent, nomeBase, req.user.email, patient);
       const driveFile = await require('../services/drive').uploadDocxAsGoogleDoc(docxBuf, reportFileName, subfolderId);
       driveFileId = driveFile.id;
       driveIsGoogleDoc = true;
