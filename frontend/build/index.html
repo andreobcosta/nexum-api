@@ -45,10 +45,11 @@ input,select,textarea,button{font-family:inherit;-webkit-appearance:none}
 @keyframes progressFill{from{width:0}to{width:100%}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 
-/* ── LAYOUT DESKTOP — container centralizado, sem zoom ── */
+/* ── LAYOUT DESKTOP — full screen dinâmico ── */
 @media (min-width: 768px) {
-  body { background: #ccc9be; display: flex; justify-content: center; align-items: stretch; }
-  #root { max-width: 820px; width: 100%; box-shadow: 0 0 60px rgba(0,0,0,0.18); flex-shrink: 0; }
+  html { font-size: clamp(13px, 1.05vw, 16px); }
+  body { background: var(--sand); }
+  #root { width: 100%; max-width: 100%; }
 }
 
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -339,8 +340,8 @@ function PatientListPage({onSelect,onNew,onImport,onCosts,onSettings}){
         <div style={{display:'flex',gap:8}}>
           <button onClick={onCosts} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16}} title="Custos">💰</button>
           <button onClick={onSettings} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16}} title="Configurações">⚙️</button>
-          <button onClick={onImport} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:15}} title="Importar CSV">↑</button>
-          <button onClick={onNew} title="Novo paciente" style={{background:'rgba(255,255,255,0.18)',border:'none',color:'#fff',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:22,fontWeight:300}}>+</button>
+          <button onClick={onImport} style={{background:'rgba(255,255,255,0.12)',border:'none',color:'rgba(255,255,255,0.85)',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16}} title="Importar CSV">↑</button>
+          <button onClick={onNew} title="Novo paciente" style={{background:'rgba(255,255,255,0.18)',border:'none',color:'#fff',width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16,fontWeight:300}}>+</button>
         </div>
       }/>
 
@@ -447,12 +448,9 @@ function PatientCard(p,onSelect){
             {p.age?p.age+' anos':''}{p.age&&p.grade?' · ':''}{p.grade||''}
             {tot>0?<span style={{color:V.ink4}}>{p.age||p.grade?' · ':''}{tot} arq.</span>:''}
           </div>
-          {!p.ready_for_ran&&missing.length>0&&(
-            <div style={{fontSize:10,color:V.amber,marginTop:3}}>Falta: {missing.join(', ')}</div>
-          )}
         </div>
         <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4,flexShrink:0}}>
-          <Badge type={p.ready_for_ran?'ready':'missing'}/>
+          {p.ready_for_ran&&<Badge type="ready"/>}
           {(p.completeness?.reports||0)>0&&<Badge type="draft" text={(p.completeness.reports)+' rel.'}/>}
         </div>
       </div>
@@ -638,7 +636,6 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
                 </div>
               </div>
             )}
-            {!patient.ready_for_ran&&<div style={{padding:'8px 12px',background:'#fff3cd',borderRadius:6,fontSize:13,color:'#856404',marginTop:8}}>⚠ Dados incompletos para gerar RAN completo</div>}
           </div>
         )}
 
@@ -661,7 +658,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
                   </div>
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
                     <Badge type={r.status==='reviewed'||r.status==='imported'?'done':'draft'} text={r.status==='reviewed'||r.status==='imported'?'Revisado ✓':'Rascunho'}/>
-                    <button onClick={()=>setConfirmDel({id:r.id,version:r.version})} title="Remover relatório" style={{background:'none',border:'none',color:V.ink4,cursor:'pointer',fontSize:16,padding:4}}>🗑</button>
+                    <button onClick={()=>setConfirmDel({id:r.id,version:r.version})} title="Remover relatório" style={{background:'none',border:'none',color:V.ink4,cursor:'pointer',fontSize:16,padding:'6px'}}>🗑</button>
                   </div>
                 </div>
               </Card>
@@ -1241,7 +1238,7 @@ function SettingsPage({onBack,onAdmin}){
         <div style={{background:V.white,borderRadius:16,padding:20,marginBottom:16,display:'flex',flexDirection:'column',gap:12}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <div style={{fontSize:13,fontWeight:700,color:V.ink,letterSpacing:'0.04em',textTransform:'uppercase'}}>Aprendizado da IA</div>
-            <button onClick={recarregarPadroes} title="Atualizar" style={{background:'none',border:'none',color:V.ink3,cursor:'pointer',fontSize:15,padding:'2px 6px',fontFamily:'inherit'}}>↺</button>
+            <button onClick={recarregarPadroes} title="Atualizar" style={{background:'none',border:'none',color:V.ink3,cursor:'pointer',fontSize:16,padding:'2px 6px',fontFamily:'inherit'}}>↺</button>
           </div>
           <div style={{fontSize:12,color:V.ink3}}>Padrões de escrita identificados a partir das suas edições. Aprove para incorporar nas próximas RANs.</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
