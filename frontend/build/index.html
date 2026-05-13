@@ -444,13 +444,8 @@ function PatientCard(p,onSelect){
         <Avatar name={p.full_name}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:14,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontFamily:"'Fraunces',serif",color:V.ink}}>{p.full_name}</div>
-          <div style={{fontSize:11,color:V.ink3,marginTop:2}}>
-            {p.age?p.age+' anos':''}{p.age&&p.grade?' · ':''}{p.grade||''}
-            {tot>0?<span style={{color:V.ink4}}>{p.age||p.grade?' · ':''}{tot} arq.</span>:''}
-          </div>
         </div>
         <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4,flexShrink:0}}>
-          {p.ready_for_ran&&<Badge type="ready"/>}
           {(p.completeness?.reports||0)>0&&<Badge type="draft" text={(p.completeness.reports)+' rel.'}/>}
         </div>
       </div>
@@ -600,7 +595,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
               <div style={{fontSize:12,color:V.ink4,marginTop:3}}>{patient.handedness||''}{patient.medications?' · '+patient.medications:''}</div>
               {patient.guardians&&<div style={{fontSize:12,color:V.ink4,marginTop:2}}>Resp.: {patient.guardians}</div>}
             </div>
-            <Badge type={patient.ready_for_ran?'ready':'missing'}/>
+            {patient.ready_for_ran&&<Badge type="ready"/>}
           </div>
         </Card>
 
