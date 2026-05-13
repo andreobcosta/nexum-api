@@ -531,6 +531,10 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
   const[expandedCat,setExpandedCat]=useState(null);
   const[showAtualizarMenu,setShowAtualizarMenu]=useState(false);
   const importRanRef=useRef(null);
+  const uploadRef=useRef(null);
+  const[uploadingFile,setUploadingFile]=useState(false);
+  const[showAudioRec,setShowAudioRec]=useState(false);
+  const rec=useAudioRecorder();
 
   const load=useCallback(()=>{setLoading(true);apiFetch('/patients/'+patientId).then(setPatient).catch(console.error).finally(()=>setLoading(false))},[patientId]);
   useEffect(()=>{load()},[load]);
@@ -564,6 +568,8 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
     catch(e){setToast({message:e.message,type:'error'})}
     setConfirmDel(null)
   };
+  const handleDirectUpload=async e=>{const fl=Array.from(e.target.files);if(!fl.length)return;setUploadingFile(true);try{const fixed=await Promise.all(fl.map(f=>fixImageOrientation(f)));const fd=new FormData();for(const f of fixed)fd.append('file',f);fd.append('patient_id',patientId);fd.append('category','anamnese');await apiUpload('/files/upload',fd);setToast({message:fl.length+' arquivo(s) enviado(s)',type:'success'});load();}catch(e){setToast({message:e.message,type:'error'});}finally{setUploadingFile(false);e.target.value='';}};
+  const handleAudioUpload=async()=>{if(!rec.blob)return;setUploadingFile(true);try{const f=new File([rec.blob],'audio_sessao_'+Date.now()+'.webm',{type:rec.blob.type});const fd=new FormData();fd.append('file',f);fd.append('patient_id',patientId);fd.append('category','sessao');await apiUpload('/files/upload',fd);rec.discard();setShowAudioRec(false);setToast({message:'Áudio salvo!',type:'success'});load();}catch(e){setToast({message:e.message,type:'error'});}finally{setUploadingFile(false);}}
 
   if(loading)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Carregando..." onBack={onBack}/><Spinner text="Carregando paciente..."/></div>;
   if(!patient)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>;
@@ -673,7 +679,11 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
             {files.map(f=><FileItem key={f.id} f={f} patientId={patientId} onDeleted={()=>load()} onCategoryChanged={()=>load()} onError={e=>setToast({message:e,type:'error'})} onPreviewFile={onPreviewFile}/>)}
           </div>
         )}
-        <Btn onClick={()=>onCapture(patientId,null)} full icon="↑" variant="secondary">Enviar arquivo</Btn>
+      </div>
+      <div style={{borderTop:'1px solid '+V.sand2,padding:'12px 16px',background:V.white,flexShrink:0}}>
+        <input ref={uploadRef} type="file" accept="image/*,application/pdf,.doc,.docx,.txt,.mp3,.wav,.aac,.flac" multiple style={{display:'none'}} onChange={handleDirectUpload}/>
+        {showAudioRec&&<div style={{background:V.sand,borderRadius:14,padding:'14px 16px',marginBottom:12,border:'1px solid '+V.sand2}}>{rec.st==='idle'&&<div style={{display:'flex',alignItems:'center',gap:10}}><button onClick={rec.start} style={{width:44,height:44,borderRadius:'50%',border:'none',background:V.coral,cursor:'pointer',fontSize:20,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>🎙</button><div><div style={{fontSize:13,fontWeight:600,color:V.ink}}>Toque para iniciar</div><div style={{fontSize:11,color:V.ink3}}>Áudio salvo em Sessões</div></div><button onClick={()=>setShowAudioRec(false)} style={{marginLeft:'auto',background:'none',border:'none',color:V.ink4,cursor:'pointer',fontSize:18,flexShrink:0}}>✕</button></div>}{rec.st==='recording'&&<div style={{display:'flex',alignItems:'center',gap:10}}><div style={{width:12,height:12,borderRadius:'50%',background:V.coral,animation:'recPulse 1.2s ease-in-out infinite',flexShrink:0}}/><div style={{fontSize:20,fontWeight:700,color:V.coral,fontFamily:"'Fraunces',serif",minWidth:60}}>{rec.fmt}</div><div style={{fontSize:11,color:V.ink3}}>{rec.sizeKB} KB</div><button onClick={rec.stop} style={{marginLeft:'auto',width:40,height:40,borderRadius:'50%',border:'3px solid '+V.coral,background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><div style={{width:14,height:14,borderRadius:4,background:V.coral}}/></button></div>}{rec.st==='recorded'&&<div style={{display:'flex',alignItems:'center',gap:8}}><div style={{fontSize:13,color:V.green,fontWeight:600}}>✓ {rec.fmt} gravado</div><button onClick={rec.discard} style={{marginLeft:'auto',background:'none',border:'1px solid '+V.sand3,borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:V.ink3,fontFamily:'inherit'}}>Descartar</button><button onClick={handleAudioUpload} disabled={uploadingFile} style={{background:V.forest,border:'none',borderRadius:8,padding:'6px 14px',cursor:'pointer',fontSize:12,fontWeight:600,color:V.white,fontFamily:'inherit'}}>{uploadingFile?'...':'Salvar'}</button></div>}</div>}
+        <div style={{display:'flex',gap:8}}><Btn onClick={()=>uploadRef.current?.click()} loading={uploadingFile} full icon="↑" variant="secondary">Enviar arquivo</Btn><button onClick={()=>{setShowAudioRec(r=>!r);}} title="Gravar áudio" style={{width:48,height:48,borderRadius:14,border:'none',background:showAudioRec?V.coral:V.coralLight,cursor:'pointer',fontSize:20,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:showAudioRec?V.white:V.coral}}>🎙</button></div>
       </div>
 
       {confirmDel&&<Confirm title={'Remover RAN v'+confirmDel.version+'?'} message="O arquivo no Google Drive será mantido. Esta ação não pode ser desfeita." danger onConfirm={()=>deleteReport(confirmDel.id)} onCancel={()=>setConfirmDel(null)}/>}
