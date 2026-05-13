@@ -653,8 +653,8 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
 
 
 // GET /api/reports/:patient_id/:report_id/pdf — exporta como PDF
-// Google Doc: exporta via Drive API (melhor qualidade)
-// Fallback: gera PDF localmente via pdfkit (para relatórios antigos em .md)
+// Gera DOCX na hora e converte via LibreOffice — PDF idêntico ao .docx baixado
+// Fallback: pdfkit para casos onde LibreOffice não está disponível
 router.get('/:patient_id/:report_id/pdf', async (req, res) => {
   try {
     const db = getDb();
@@ -668,21 +668,21 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
 
     let buffer;
 
-    // Tenta exportar PDF via Drive (Google Doc nativo)
-    if (report.drive_file_id) {
+    // Gera DOCX e converte via LibreOffice (PDF idêntico ao DOCX)
+    if (report.content_md) {
       try {
-        const isDoc = report.drive_is_google_doc || await drive.isGoogleDoc(report.drive_file_id);
-        if (isDoc) {
-          buffer = await drive.exportAsPdf(report.drive_file_id);
-        }
-      } catch (driveErr) {
-        console.error('[PDF] Falha Drive export — file_id:', report.drive_file_id, '| erro:', driveErr.message);
+        const { gerarDocx, gerarPdfViaLibreOffice } = require('../services/docx-generator');
+        const docxBuffer = await gerarDocx(report.content_md, fileName, req.user?.email, patient);
+        buffer = await gerarPdfViaLibreOffice(docxBuffer);
+        console.log('[PDF] Gerado via LibreOffice —', buffer.length, 'bytes');
+      } catch (loErr) {
+        console.error('[PDF] LibreOffice falhou — usando pdfkit fallback:', loErr.message);
       }
     }
 
-    // Fallback: gera PDF localmente a partir do Markdown
+    // Fallback: pdfkit
     if (!buffer) {
-      console.log('[PDF] Gerando PDF local via pdfkit');
+      console.log('[PDF] Gerando via pdfkit fallback');
       const { gerarPdfDeMarkdown } = require('../services/docx-generator');
       buffer = await gerarPdfDeMarkdown(report.content_md || '', patient?.full_name || 'Paciente', report.version);
     }

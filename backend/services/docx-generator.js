@@ -897,4 +897,37 @@ async function gerarPdfDeMarkdown(contentMd, patientName, version) {
   });
 }
 
-module.exports = { gerarDocx, gerarDocxDeHtml, gerarPdfDeMarkdown };
+// Converte buffer DOCX para PDF via LibreOffice headless — PDF idêntico ao DOCX
+async function gerarPdfViaLibreOffice(docxBuffer) {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
+
+  const uid = Date.now() + '_' + Math.random().toString(36).slice(2);
+  const tmpDir = os.tmpdir();
+  const docxPath = path.join(tmpDir, `ran_${uid}.docx`);
+  const pdfPath = path.join(tmpDir, `ran_${uid}.pdf`);
+  const loProfile = path.join(tmpDir, `lo_profile_${uid}`);
+
+  try {
+    fs.writeFileSync(docxPath, docxBuffer);
+    await execFileAsync('libreoffice', [
+      '--headless',
+      `--env:UserInstallation=file://${loProfile}`,
+      '--convert-to', 'pdf',
+      '--outdir', tmpDir,
+      docxPath
+    ], { timeout: 60000 });
+    return fs.readFileSync(pdfPath);
+  } finally {
+    for (const p of [docxPath, pdfPath]) {
+      try { fs.unlinkSync(p); } catch {}
+    }
+    try { fs.rmSync(loProfile, { recursive: true, force: true }); } catch {}
+  }
+}
+
+module.exports = { gerarDocx, gerarDocxDeHtml, gerarPdfDeMarkdown, gerarPdfViaLibreOffice };
