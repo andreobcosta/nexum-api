@@ -909,19 +909,39 @@ async function gerarPdfViaLibreOffice(docxBuffer) {
   const uid = Date.now() + '_' + Math.random().toString(36).slice(2);
   const tmpDir = os.tmpdir();
   const docxPath = path.join(tmpDir, `ran_${uid}.docx`);
-  const pdfPath = path.join(tmpDir, `ran_${uid}.pdf`);
+  // LibreOffice gera o PDF com o mesmo nome base do .docx no outdir
+  const docxName = path.basename(docxPath, '.docx');
+  const pdfPath = path.join(tmpDir, `${docxName}.pdf`);
   const loProfile = path.join(tmpDir, `lo_profile_${uid}`);
+
+  // Cria diretório do perfil isolado
+  fs.mkdirSync(loProfile, { recursive: true });
 
   try {
     fs.writeFileSync(docxPath, docxBuffer);
-    await execFileAsync('libreoffice', [
+    console.log('[LibreOffice] Convertendo', docxPath, '→', pdfPath);
+
+    // soffice é o binário padrão no Debian; libreoffice é um wrapper que pode não existir
+    // -env: (traço simples) é a sintaxe correta do LibreOffice para variáveis de ambiente
+    const { stdout, stderr } = await execFileAsync('soffice', [
       '--headless',
-      `--env:UserInstallation=file://${loProfile}`,
-      '--convert-to', 'pdf',
+      '--norestore',
+      '--nologo',
+      `-env:UserInstallation=file://${loProfile}`,
+      '--convert-to', 'pdf:writer_pdf_Export',
       '--outdir', tmpDir,
       docxPath
-    ], { timeout: 60000 });
-    return fs.readFileSync(pdfPath);
+    ], { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+
+    if (stdout) console.log('[LibreOffice] stdout:', stdout.trim());
+    if (stderr) console.log('[LibreOffice] stderr:', stderr.trim());
+
+    if (!fs.existsSync(pdfPath)) {
+      throw new Error(`LibreOffice não gerou o PDF esperado em ${pdfPath}`);
+    }
+    const pdfBuffer = fs.readFileSync(pdfPath);
+    console.log('[LibreOffice] PDF gerado com sucesso —', pdfBuffer.length, 'bytes');
+    return pdfBuffer;
   } finally {
     for (const p of [docxPath, pdfPath]) {
       try { fs.unlinkSync(p); } catch {}

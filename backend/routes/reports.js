@@ -656,6 +656,7 @@ router.get('/:patient_id/:report_id/docx', async (req, res) => {
 // Gera DOCX na hora e converte via LibreOffice — PDF idêntico ao .docx baixado
 // Fallback: pdfkit para casos onde LibreOffice não está disponível
 router.get('/:patient_id/:report_id/pdf', async (req, res) => {
+  console.log('[PDF] Rota acionada — patient:', req.params.patient_id, 'report:', req.params.report_id);
   try {
     const db = getDb();
     const doc = await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(req.params.report_id).get();
@@ -671,12 +672,17 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
     // Gera DOCX e converte via LibreOffice (PDF idêntico ao DOCX)
     if (report.content_md) {
       try {
+        console.log('[PDF] Gerando DOCX para conversão LibreOffice...');
         const { gerarDocx, gerarPdfViaLibreOffice } = require('../services/docx-generator');
         const docxBuffer = await gerarDocx(report.content_md, fileName, req.user?.email, patient);
+        console.log('[PDF] DOCX gerado —', docxBuffer.length, 'bytes — iniciando LibreOffice...');
         buffer = await gerarPdfViaLibreOffice(docxBuffer);
         console.log('[PDF] Gerado via LibreOffice —', buffer.length, 'bytes');
       } catch (loErr) {
-        console.error('[PDF] LibreOffice falhou — usando pdfkit fallback:', loErr.message);
+        console.error('[PDF] LibreOffice falhou:', loErr.message);
+        if (loErr.stderr) console.error('[PDF] LibreOffice stderr:', loErr.stderr);
+        if (loErr.stdout) console.error('[PDF] LibreOffice stdout:', loErr.stdout);
+        console.log('[PDF] Usando pdfkit fallback...');
       }
     }
 
@@ -692,7 +698,7 @@ router.get('/:patient_id/:report_id/pdf', async (req, res) => {
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
   } catch (err) {
-    console.error('[PDF]', err);
+    console.error('[PDF] Erro fatal:', err.message, err.stack);
     res.status(500).json({ error: 'Erro ao gerar PDF', details: err.message });
   }
 });
