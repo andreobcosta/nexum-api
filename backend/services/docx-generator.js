@@ -535,19 +535,15 @@ async function gerarDocx(contentMd, nomeArquivo, userEmail, paciente = null) {
   // Monta bloco de identificação
   let blocoId;
   const linhas = contentMd.split('\n');
-  // Primeiro ## = cabeçalho/identificação; segundo ## = início do corpo do relatório
+  // Identificação fica antes do primeiro ## (Nome, Data, etc. em texto plano após o # título)
+  // restoMd começa no primeiro ## para incluir QUEIXA PRINCIPAL e todas as seções seguintes
   const primeiroH2 = linhas.findIndex(l => l.startsWith('## ') && !l.includes('RELATÓRIO'));
-  const segundoH2 = primeiroH2 >= 0
-    ? linhas.findIndex((l, idx) => idx > primeiroH2 && l.startsWith('## '))
-    : -1;
-  const inicioCorpo = segundoH2 > 0 ? segundoH2 : (primeiroH2 > 0 ? primeiroH2 : 0);
-  const restoMd = inicioCorpo > 0 ? linhas.slice(inicioCorpo).join('\n') : contentMd;
+  const restoMd = primeiroH2 > 0 ? linhas.slice(primeiroH2).join('\n') : contentMd;
   if (paciente && paciente.full_name) {
     blocoId = gerarBlocoIdentificacaoDireto(paciente);
   } else {
-    // Fallback: extrai dados do corpo da seção 1 do RAN (inclui título + corpo de identificação)
-    const limiteSecao1 = segundoH2 > 0 ? segundoH2 : (primeiroH2 > 0 ? primeiroH2 + 25 : 30);
-    const linhasSecao1 = linhas.slice(0, limiteSecao1);
+    // Fallback: linhas antes do primeiro ## contêm Nome, Data, Escolaridade etc.
+    const linhasSecao1 = primeiroH2 > 0 ? linhas.slice(0, primeiroH2) : linhas.slice(0, 25);
     blocoId = gerarBlocoIdentificacao(linhasSecao1);
   }
   const conteudo = parsearMarkdown(restoMd);
