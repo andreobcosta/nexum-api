@@ -242,6 +242,7 @@ router.patch('/:patient_id/:file_id', async (req, res) => {
       update.display_name = req.body.display_name;
       if (file.drive_file_id) await drive.renameFile(file.drive_file_id, req.body.display_name).catch(e => console.warn('[Files] renameFile falhou:', e.message));
     }
+    if (req.body.rotation !== undefined) update.rotation = Number(req.body.rotation);
     await ref.update(update);
     res.json({ message: 'Arquivo atualizado', ...update });
   } catch (err) {
@@ -266,7 +267,8 @@ router.get('/:patient_id/:file_id/info', async (req, res) => {
       file_type: file.file_type,
       drive_file_id: id,
       content: file.content || file.transcription || null,
-      preview_url: id ? 'https://drive.google.com/file/d/' + id + '/preview' : null
+      preview_url: id ? 'https://drive.google.com/file/d/' + id + '/preview' : null,
+      rotation: file.rotation || 0
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
