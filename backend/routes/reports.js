@@ -100,8 +100,8 @@ router.post('/generate/:patient_id', async (req, res) => {
     const filesSnap = await db.collection('patients').doc(req.params.patient_id).collection('files').get();
     const fileCounts = {};
     for (const f of filesSnap.docs) {
-      const cat = f.data().category;
-      fileCounts[cat] = (fileCounts[cat] || 0) + 1;
+      const cat = f.data().category || f.data().categoria;
+      if (cat) fileCounts[cat] = (fileCounts[cat] || 0) + 1;
     }
 
     const missing = [];
@@ -131,7 +131,8 @@ router.post('/generate/:patient_id', async (req, res) => {
 
         for (const f of filesSnap.docs) {
           const file = f.data();
-          const folderName = drive.CATEGORY_TO_FOLDER[file.category] || file.category;
+          const cat = file.category || file.categoria;
+          const folderName = drive.CATEGORY_TO_FOLDER[cat] || cat;
           if (!dataPackage[folderName]) dataPackage[folderName] = [];
           if (file.transcription) {
             dataPackage[folderName].push({ name: file.original_name, type: 'text/plain', transcription: file.transcription, content: null, source: 'firestore_transcription' });

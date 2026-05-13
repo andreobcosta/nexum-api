@@ -261,7 +261,7 @@ router.delete('/:patient_id/:file_id', async (req, res) => {
   }
 });
 
-// PATCH /api/files/:patient_id/:file_id — renomear display_name ou trocar categoria
+// PATCH /api/files/:patient_id/:file_id — renomear display_name, trocar categoria ou salvar rotation
 router.patch('/:patient_id/:file_id', async (req, res) => {
   try {
     const db = getDb();
@@ -270,7 +270,25 @@ router.patch('/:patient_id/:file_id', async (req, res) => {
     if (!doc.exists) return res.status(404).json({ error: 'Arquivo não encontrado' });
     const file = doc.data();
     const update = { updated_at: new Date().toISOString() };
-    if (req.body.categoria !== undefined) update.categoria = req.body.categoria;
+
+    // Mudança de categoria — aceita tanto "category" (padrão atual) quanto "categoria" (legado)
+    const newCat = req.body.category !== undefined ? req.body.category : req.body.categoria;
+    if (newCat !== undefined) {
+      const VALID_CATS = ['anamnese', 'teste', 'sessao', 'relatorio', 'intervencao', 'externo'];
+      if (!VALID_CATS.includes(newCat)) return res.status(400).json({ error: 'Categoria inválida: ' + newCat });
+      const oldCat = file.category || file.categoria;
+      update.category = newCat;
+      // Atualiza contadores desnormalizados se categoria mudou
+      if (oldCat && oldCat !== newCat) {
+        const COUNTED = ['anamnese', 'teste', 'sessao', 'externo'];
+        const counterUpdate = { updated_at: update.updated_at };
+        if (COUNTED.includes(oldCat)) counterUpdate[oldCat + '_count'] = FieldValue.increment(-1);
+        if (COUNTED.includes(newCat)) counterUpdate[newCat + '_count'] = FieldValue.increment(1);
+        await db.collection('patients').doc(req.params.patient_id).update(counterUpdate)
+          .catch(e => console.warn('[Files] atualização de contadores falhou:', e.message));
+      }
+    }
+
     if (req.body.display_name !== undefined) {
       update.display_name = req.body.display_name;
       if (file.drive_file_id) await drive.renameFile(file.drive_file_id, req.body.display_name).catch(e => console.warn('[Files] renameFile falhou:', e.message));
