@@ -45,6 +45,12 @@ input,select,textarea,button{font-family:inherit;-webkit-appearance:none}
 @keyframes progressFill{from{width:0}to{width:100%}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 
+/* ── ZOOM RESPONSIVO — desktop: escala toda a UI proporcionalmente ── */
+@media (min-width: 768px)  { body { zoom: 1.25; } }
+@media (min-width: 1024px) { body { zoom: 1.4;  } }
+@media (min-width: 1280px) { body { zoom: 1.5;  } }
+@media (min-width: 1600px) { body { zoom: 1.65; } }
+
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#c5b99a;border-radius:3px}
