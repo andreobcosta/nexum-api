@@ -17,12 +17,13 @@ const FONTES_PERMITIDAS = ['Arial', 'Helvetica', 'Times New Roman', 'Georgia', '
 
 // Estado de layout por geração — monousuário, sem risco de corrida
 let _fonte = 'Arial';
-let _tamanho = 22; // half-points = 11pt padrão
+let _tamanho = 24; // half-points = 12pt (ABNT)
 
-// Margens: 1440 DXA = 1 polegada
-const MARGEM = 1440;
-// Largura do conteúdo em A4: 11906 - 2880 = 9026 DXA
-const LARGURA_CONTEUDO = 9026;
+// Margens ABNT: esquerda/superior 3cm = 1701 DXA; direita/inferior 2cm = 1134 DXA
+const MARGEM_LT = 1701; // left / top
+const MARGEM_RB = 1134; // right / bottom
+// Largura do conteúdo em A4: 11906 - 1701 - 1134 = 9071 DXA
+const LARGURA_CONTEUDO = 9071;
 
 // ── Helpers de parágrafo ──────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ function paragrafoVazio(espacoAntes = 0, espacoDepois = 0) {
 }
 
 async function carregarLayout(userEmail) {
-  const defaults = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null, logo_base64: null };
+  const defaults = { fonte: 'Arial', tamanho: 24, cabecalho: null, logo_url: null, logo_base64: null };
   if (!userEmail) return defaults;
   try {
     const doc = await getDb().collection('report_layout').doc(userEmail).get();
@@ -39,7 +40,7 @@ async function carregarLayout(userEmail) {
     const d = doc.data();
     const fonteValida = FONTES_PERMITIDAS.includes(d.fonte) ? d.fonte : 'Arial';
     const ptNum = parseInt(d.tamanho, 10);
-    const tamanhoHP = (!isNaN(ptNum) && ptNum >= 8 && ptNum <= 36) ? ptNum * 2 : 22;
+    const tamanhoHP = (!isNaN(ptNum) && ptNum >= 8 && ptNum <= 36) ? ptNum * 2 : 24;
     return { fonte: fonteValida, tamanho: tamanhoHP, cabecalho: d.cabecalho || null, logo_url: d.logo_url || null, logo_base64: d.logo_base64 || null };
   } catch (err) {
     console.warn('[DocxGenerator] carregarLayout falhou — usando defaults:', err.message);
@@ -90,7 +91,7 @@ function tituloSecao(texto) {
     spacing: { before: 280, after: 80, line: 360, lineRule: 'auto' },
     border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: VERDE, space: 4 } },
     children: [new TextRun({
-      text: limpo.toUpperCase(), bold: true, size: 22,
+      text: limpo.toUpperCase(), bold: true, size: 24,
       color: VERDE, font: 'Arial'
     })]
   });
@@ -102,7 +103,7 @@ function subTitulo(texto) {
     heading: HeadingLevel.HEADING_2,
     spacing: { before: 160, after: 40, line: 360, lineRule: 'auto' },
     children: [new TextRun({
-      text: limpo, bold: true, size: 20,
+      text: limpo, bold: true, size: 24,
       color: '2C3828', font: 'Arial'
     })]
   });
@@ -114,7 +115,7 @@ function subSubTitulo(texto) {
     heading: HeadingLevel.HEADING_3,
     spacing: { before: 100, after: 30, line: 360, lineRule: 'auto' },
     children: [new TextRun({
-      text: limpo, bold: true, italics: true, size: 20,
+      text: limpo, bold: true, italics: true, size: 22,
       color: '2C3828', font: 'Arial'
     })]
   });
@@ -154,7 +155,7 @@ function processarInline(texto, opcoes = {}) {
 function itemLista(texto) {
   const limpo = texto.replace(/^[-•]\s*/, '').trim();
   return new Paragraph({
-    spacing: { before: 30, after: 30 },
+    spacing: { before: 30, after: 30, line: 360, lineRule: 'auto' },
     indent: { left: 360, hanging: 180 },
     children: [
       new TextRun({ text: '• ', color: VERDE, bold: true, size: _tamanho, font: _fonte }),
@@ -540,7 +541,7 @@ function gerarBlocoIdentificacao(linhasSecao1) {
 // ── Função principal exportada ─────────────────────────────────────────────
 
 async function gerarDocx(contentMd, nomeArquivo, userEmail, paciente = null) {
-  let layout = { fonte: 'Arial', tamanho: 22, cabecalho: null, logo_url: null, logo_base64: null };
+  let layout = { fonte: 'Arial', tamanho: 24, cabecalho: null, logo_url: null, logo_base64: null };
   let logoBuffer = null;
   try {
     layout = await carregarLayout(userEmail);
@@ -578,7 +579,7 @@ async function gerarDocx(contentMd, nomeArquivo, userEmail, paciente = null) {
       properties: {
         page: {
           size: { width: 11906, height: 16838 }, // A4
-          margin: { top: MARGEM, right: MARGEM, bottom: MARGEM, left: MARGEM }
+          margin: { top: MARGEM_LT, right: MARGEM_RB, bottom: MARGEM_RB, left: MARGEM_LT }
         }
       },
       headers: { default: gerarHeader(layout.cabecalho, logoBuffer) },
