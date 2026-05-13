@@ -429,55 +429,79 @@ function gerarBlocoIdentificacaoDireto(p) {
 }
 
 function gerarBlocoIdentificacao(linhasSecao1) {
-  const limpar = (s) => s.replace(/\*\*/g,'').replace(/\[.*?\]/g,'').trim();
-  // Extrai valor após "Label:" ou "Label?" numa linha
-  const campo = (...labels) => {
-    for (const label of labels) {
-      const linha = linhasSecao1.find(l => l.includes(label));
-      if (!linha) continue;
-      // Suporte a "Label:" e "Label?" como separadores
-      const sep = linha.includes(label + ':') ? label + ':' : label + '?';
-      const idx = linha.indexOf(sep);
-      if (idx < 0) continue;
-      const valor = limpar(linha.slice(idx + sep.length));
-      if (valor) return valor;
-    }
-    return '[Não informado]';
-  };
+  const limpar = (s) => s.replace(/\*\*/g, '').replace(/\[.*?\]/g, '').trim();
 
-  const nome = campo('Nome da Criança', 'Nome:');
-  let nascimento = '[Não informado]';
-  let idade = '[Não informado]';
-  const linhaNasc = linhasSecao1.find(l =>
-    l.includes('Data de Nascimento') || l.includes('Data de nascimento') || l.includes('Nascimento')
-  );
-  if (linhaNasc) {
-    const idx = linhaNasc.search(/[Nn]ascimento\s*:/);
-    const rawValor = idx >= 0 ? limpar(linhaNasc.slice(linhaNasc.indexOf(':', idx) + 1)) : '';
-    if (rawValor.includes('|')) {
-      const partes = rawValor.split('|').map(p => p.trim());
-      nascimento = limpar(partes[0].replace(/Idade:.*/i, '')) || '[Não informado]';
-      idade = limpar((partes[1] || '').replace(/Idade:/i, '')) || '[Não informado]';
-    } else if (rawValor.match(/Idade:/i)) {
-      const partes = rawValor.split(/Idade:/i);
-      nascimento = limpar(partes[0]) || '[Não informado]';
-      idade = limpar(partes[1] || '') || '[Não informado]';
+  // Detecta formato: tabela markdown (importado) ou texto plano (gerado pela IA)
+  const isTabela = linhasSecao1.some(l => l.trim().startsWith('|') && l.trim().length > 3 && !l.match(/^\|[-:\s|]+\|$/));
+
+  let nome, nascimento, idade, escolaridade, dominancia, medicamentos, responsaveis;
+
+  if (isTabela) {
+    // Formato importado: | **Label** | Valor | (pode ter 2 ou 3 colunas)
+    const cell = (...labels) => {
+      for (const label of labels) {
+        const linha = linhasSecao1.find(l => l.includes(label) && l.trim().startsWith('|'));
+        if (!linha) continue;
+        const cells = linha.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => limpar(c));
+        // Pula a primeira célula (rótulo) e une as demais (valor)
+        const valCells = cells.slice(1).filter(Boolean);
+        if (valCells.length) return valCells.join('  |  ');
+      }
+      return '[Não informado]';
+    };
+    nome = cell('Nome completo', 'Nome da Criança');
+    // Data e Idade ficam em células separadas na mesma linha: | Label | Data | Idade |
+    const linhaData = linhasSecao1.find(l => (l.includes('nascimento') || l.includes('Nascimento')) && l.trim().startsWith('|'));
+    if (linhaData) {
+      const cells = linhaData.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => limpar(c)).filter(Boolean);
+      nascimento = cells[1] || '[Não informado]';
+      idade = cells[2] || '[Não informado]';
     } else {
-      nascimento = rawValor || '[Não informado]';
+      nascimento = '[Não informado]'; idade = '[Não informado]';
     }
-  }
-  if (idade === '[Não informado]') {
-    const linhaIdade = linhasSecao1.find(l =>
-      l.match(/^Idade:/i) || (l.includes('Idade:') && !l.includes('Nascimento'))
-    );
-    if (linhaIdade) {
-      idade = limpar(linhaIdade.slice(linhaIdade.indexOf('Idade:') + 6)) || '[Não informado]';
+    escolaridade = cell('Escolaridade');
+    dominancia = cell('Dominância manual', 'Dominância');
+    medicamentos = cell('Medicamentos');
+    responsaveis = cell('Responsáveis', 'Responsavel');
+  } else {
+    // Formato plain text gerado pela IA: "**Label:** Valor" ou "**Label?** Valor"
+    const campo = (...labels) => {
+      for (const label of labels) {
+        const linha = linhasSecao1.find(l => l.includes(label));
+        if (!linha) continue;
+        const sep = linha.includes(label + ':') ? label + ':' : label + '?';
+        const idx = linha.indexOf(sep);
+        if (idx < 0) continue;
+        const valor = limpar(linha.slice(idx + sep.length));
+        if (valor) return valor;
+      }
+      return '[Não informado]';
+    };
+    nome = campo('Nome da Criança', 'Nome:');
+    nascimento = '[Não informado]'; idade = '[Não informado]';
+    const linhaNasc = linhasSecao1.find(l => l.includes('Data de Nascimento') || l.includes('Data de nascimento') || l.includes('Nascimento'));
+    if (linhaNasc) {
+      const colonIdx = linhaNasc.indexOf(':', linhaNasc.search(/[Nn]ascimento/));
+      const rawValor = colonIdx >= 0 ? limpar(linhaNasc.slice(colonIdx + 1)) : '';
+      if (rawValor.includes('|')) {
+        const partes = rawValor.split('|').map(p => p.trim());
+        nascimento = limpar(partes[0].replace(/Idade:.*/i, '')) || '[Não informado]';
+        idade = limpar((partes[1] || '').replace(/Idade:/i, '')) || '[Não informado]';
+      } else if (rawValor.match(/Idade:/i)) {
+        const partes = rawValor.split(/Idade:/i);
+        nascimento = limpar(partes[0]) || '[Não informado]';
+        idade = limpar(partes[1] || '') || '[Não informado]';
+      } else { nascimento = rawValor || '[Não informado]'; }
     }
+    if (idade === '[Não informado]') {
+      const linhaId = linhasSecao1.find(l => l.match(/^Idade:/i) || (l.includes('Idade:') && !l.includes('Nascimento')));
+      if (linhaId) idade = limpar(linhaId.slice(linhaId.indexOf('Idade:') + 6)) || '[Não informado]';
+    }
+    escolaridade = campo('Escolaridade');
+    dominancia = campo('Dominância manual', 'Dominância', 'Dominancia');
+    medicamentos = campo('Faz uso de medicamentos', 'Medicamentos em uso', 'Medicamentos', 'medicamentos');
+    responsaveis = campo('Responsáveis', 'Responsavel', 'Responsáveis');
   }
-  const escolaridade = campo('Escolaridade');
-  const dominancia = campo('Dominância manual', 'Dominância', 'Dominancia');
-  const medicamentos = campo('Faz uso de medicamentos', 'Medicamentos em uso', 'Medicamentos', 'medicamentos');
-  const responsaveis = campo('Responsáveis', 'Responsavel', 'Responsáveis');
 
   const borderConfig = { style: BorderStyle.SINGLE, size: 4, color: BORDA };
   const borders = { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig };
@@ -539,13 +563,9 @@ async function gerarDocx(contentMd, nomeArquivo, userEmail, paciente = null) {
   // restoMd começa no primeiro ## para incluir QUEIXA PRINCIPAL e todas as seções seguintes
   const primeiroH2 = linhas.findIndex(l => l.startsWith('## ') && !l.includes('RELATÓRIO'));
   const restoMd = primeiroH2 > 0 ? linhas.slice(primeiroH2).join('\n') : contentMd;
-  if (paciente && paciente.full_name) {
-    blocoId = gerarBlocoIdentificacaoDireto(paciente);
-  } else {
-    // Fallback: linhas antes do primeiro ## contêm Nome, Data, Escolaridade etc.
-    const linhasSecao1 = primeiroH2 > 0 ? linhas.slice(0, primeiroH2) : linhas.slice(0, 25);
-    blocoId = gerarBlocoIdentificacao(linhasSecao1);
-  }
+  // Sempre extrai do markdown — fonte de verdade, independente do Firestore
+  const linhasSecao1 = primeiroH2 > 0 ? linhas.slice(0, primeiroH2) : linhas.slice(0, 25);
+  blocoId = gerarBlocoIdentificacao(linhasSecao1);
   const conteudo = parsearMarkdown(restoMd);
 
   const doc = new Document({
