@@ -464,6 +464,19 @@ async function generateRAN(systemPromptRAN, patientInfo, rawCollectedData, onPro
   log('pipeline', `Arquivos processados: ${extractionMeta.files_processed} | Ignorados: ${extractionMeta.files_skipped}`);
   extractionMeta.log.forEach(entry => console.log('[PRÉ-PROCESSADOR] ' + entry));
 
+  // Abortar se nenhum arquivo foi processado com sucesso — relatório seria placeholder inútil
+  const totalArquivosRecebidos = Object.values(rawCollectedData).flat().length;
+  if (extractionMeta.files_processed === 0 && totalArquivosRecebidos > 0) {
+    const detalhe = extractionMeta.log.length > 0
+      ? extractionMeta.log.join(' | ')
+      : 'sem detalhes — verifique os logs do servidor';
+    throw new Error(
+      `Nenhum documento pôde ser processado — ${totalArquivosRecebidos} arquivo(s) recebido(s), 0 legíveis. ` +
+      `O Drive pode estar inacessível ou as transcrições ainda não foram concluídas. ` +
+      `Detalhes: ${detalhe}`
+    );
+  }
+
   // Aguarda 20s após extração para garantir que o rate limit/min foi resetado
   if (extractionMeta.files_processed > 0) {
     log('pipeline', 'Aguardando janela de rate limit antes do Analítico (20s)...');

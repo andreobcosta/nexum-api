@@ -144,6 +144,7 @@ router.post('/generate/:patient_id', async (req, res) => {
           }
         }
 
+        let driveFalhou = false;
         try {
           const driveData = await drive.collectPatientData(patient.drive_folder_id);
           for (const folder in driveData) {
@@ -162,7 +163,9 @@ router.post('/generate/:patient_id', async (req, res) => {
             }
           }
         } catch (driveErr) {
-          console.warn('[Reports] Erro ao coletar Drive:', driveErr.message);
+          driveFalhou = true;
+          console.error('[Reports] Drive INACESSÍVEL:', driveErr.message);
+          await jobRef.update({ etapa: 'Aviso: Drive inacessível — coletando dados do Firestore' }).catch(() => {});
         }
 
         // BUG 1: arquivos que não encontraram match por nome (encoding NFD vs NFC) ficam como
@@ -224,6 +227,18 @@ router.post('/generate/:patient_id', async (req, res) => {
         const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
         const comConteudo = Object.values(dataPackage).reduce((sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0);
         console.log(`[Reports] Arquivos coletados (${totalFiles} total, ${comConteudo} com conteúdo):`, filesLog.join(' | '));
+
+        // Abortar antes dos agentes Claude se não há nenhum dado legível
+        if (totalFiles > 0 && comConteudo === 0) {
+          const motivo = driveFalhou
+            ? `Drive inacessível — nenhum arquivo pôde ser baixado. Verifique a conexão com o Google Drive e o token de autenticação.`
+            : `${totalFiles} arquivo(s) encontrado(s), mas nenhum tem conteúdo acessível. Verifique se os arquivos não estão vazios ou se as transcrições foram concluídas.`;
+          const errMsg = `Coleta de dados falhou — ${motivo}`;
+          console.error('[Reports] Abortando pipeline:', errMsg);
+          await jobRef.update({ status: 'erro', erro: errMsg, etapa: 'coleta_dados_falhou', finished_at: new Date().toISOString() }).catch(() => {});
+          await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null }).catch(() => {});
+          return;
+        }
 
         // onProgress atualiza etapa do job no Firestore a cada agente
         const ETAPA_MAP = { analitico: 'Agente Analítico — extraindo dados clínicos', redator: 'Agente Redator — redigindo relatório', revisor: 'Agente Revisor — validando qualidade' };
