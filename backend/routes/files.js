@@ -12,7 +12,7 @@ const { extractTextFromFile } = require('../services/pdf-extractor');
 
 const upload = multer({
   dest: path.join(__dirname, '..', 'temp'),
-  limits: { fileSize: 500 * 1024 * 1024 }
+  limits: { fileSize: 500 * 1024 * 1024, files: 50 }
 });
 
 // Transcreve áudio em background após upload
@@ -84,7 +84,7 @@ async function scoreImageInBackground(patient_id, fileId, storagePath, originalN
 }
 
 // POST /api/files/upload
-router.post('/upload', upload.array('file', 20), async (req, res) => {
+router.post('/upload', upload.array('file', 50), async (req, res) => {
   const results = [];
   const errors = [];
   try {

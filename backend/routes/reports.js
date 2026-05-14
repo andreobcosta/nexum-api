@@ -729,6 +729,21 @@ router.post('/:patient_id/:report_id/import-edited',
 
       res.json({ message: 'Relatório importado com sucesso', imported_at: now, version: novaVersion });
 
+      if (req.user?.email && report.content_md) {
+        setImmediate(async () => {
+          try {
+            await claude.extrairPadroesDoRelatorio({
+              db,
+              patient_id,
+              report_id: novoReportId,
+              textoOriginal: report.content_md,
+              textoEditado: conteudoFinal,
+              userEmail: req.user.email
+            });
+          } catch (e) { console.warn('[ImportEdit] Falha ao extrair padrões:', e.message); }
+        });
+      }
+
       try {
         const dadosPaciente = extrairDadosPacienteDoRAN(conteudoFinal);
         if (Object.keys(dadosPaciente).length > 0) {
