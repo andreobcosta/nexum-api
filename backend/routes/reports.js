@@ -71,7 +71,8 @@ function extrairDadosPacienteDoRAN(contentMd) {
 // Coleta dados do paciente do Firestore + Storage para o pipeline
 async function coletarDadosPaciente(patientId, filesSnap) {
   const dataPackage = {};
-  const filesLog = [];
+  const usados = [];
+  const pulados = [];
 
   for (const f of filesSnap.docs) {
     const file = f.data();
@@ -80,7 +81,6 @@ async function coletarDadosPaciente(patientId, filesSnap) {
     if (!dataPackage[folderName]) dataPackage[folderName] = [];
 
     if (file.transcription) {
-      // Arquivo com transcrição disponível (áudio transcrito ou nota)
       dataPackage[folderName].push({
         name: file.original_name,
         type: 'text/plain',
@@ -88,9 +88,8 @@ async function coletarDadosPaciente(patientId, filesSnap) {
         content: null,
         source: 'firestore_transcription'
       });
-      filesLog.push(file.original_name + ' (transcrição)');
+      usados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: 'transcrição no Firestore' });
     } else if (file.storage_path) {
-      // Arquivo no GCS — baixa para o pipeline
       try {
         const buffer = await storage.downloadFile(file.storage_path);
         dataPackage[folderName].push({
@@ -100,19 +99,20 @@ async function coletarDadosPaciente(patientId, filesSnap) {
           content: buffer.toString('base64'),
           source: 'storage'
         });
-        filesLog.push(file.original_name + ' (Storage)');
+        usados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: 'GCS' });
       } catch (e) {
         console.warn('[Reports] Falha ao baixar do Storage:', file.original_name, e.message);
-        filesLog.push(file.original_name + ' (falha Storage)');
+        pulados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: 'falha no download: ' + e.message });
       }
     } else {
-      // Arquivo antigo com drive_file_id sem transcription — inacessível
-      filesLog.push(file.original_name + ' (sem storage_path — ignorado)');
+      // Arquivo legado — existia só no Drive, sem storage_path
+      pulados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: 'arquivo legado (Drive) — re-upload necessário' });
     }
   }
 
-  console.log('[Reports] Arquivos coletados:', filesLog.join(' | '));
-  return dataPackage;
+  console.log('[Reports] Usados:', usados.map(f => f.name).join(' | ') || 'nenhum');
+  if (pulados.length) console.warn('[Reports] Pulados:', pulados.map(f => `${f.name} (${f.motivo})`).join(' | '));
+  return { dataPackage, usados, pulados };
 }
 
 // POST /api/reports/generate/:patient_id
@@ -178,13 +178,16 @@ router.post('/generate/:patient_id', async (req, res) => {
 
     setImmediate(async () => {
       try {
-        const dataPackage = await coletarDadosPaciente(req.params.patient_id, filesSnap);
+        const { dataPackage, usados, pulados } = await coletarDadosPaciente(req.params.patient_id, filesSnap);
+
+        // Salva resumo de arquivos no job para diagnóstico no frontend
+        await jobRef.update({ arquivos_usados: usados, arquivos_pulados: pulados }).catch(() => {});
 
         const totalFiles = Object.values(dataPackage).reduce((sum, arr) => sum + arr.length, 0);
         const comConteudo = Object.values(dataPackage).reduce((sum, arr) => sum + arr.filter(f => f.transcription || f.content).length, 0);
 
         if (totalFiles > 0 && comConteudo === 0) {
-          const errMsg = `Coleta de dados falhou — ${totalFiles} arquivo(s) encontrado(s), mas nenhum tem conteúdo acessível.`;
+          const errMsg = `Coleta de dados falhou — ${totalFiles} arquivo(s) encontrado(s), mas nenhum tem conteúdo acessível. Re-upload necessário para ${pulados.length} arquivo(s) legado(s).`;
           console.error('[Reports] Abortando pipeline:', errMsg);
           await jobRef.update({ status: 'erro', erro: errMsg, etapa: 'coleta_dados_falhou', finished_at: new Date().toISOString() }).catch(() => {});
           await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null }).catch(() => {});
