@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { google } = require('googleapis');
 const { getDb } = require('../db/firestore');
 
 async function logActivity(db, action, admin, details) {
@@ -106,6 +107,22 @@ router.get('/activity-log', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Erro ao ler activity log', details: err.message });
   }
+});
+
+// GET /api/admin/drive-auth — inicia fluxo OAuth2 para regenerar GOOGLE_REFRESH_TOKEN
+router.get('/drive-auth', (req, res) => {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/drive'],
+    prompt: 'consent',
+    state: 'drive_setup'
+  });
+  res.redirect(url);
 });
 
 module.exports = router;
