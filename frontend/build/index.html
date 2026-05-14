@@ -531,7 +531,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
   const[generating,setGenerating]=useState(false);const[pipelineStage,setPipelineStage]=useState(null);const[pipelineMsg,setPipelineMsg]=useState('');
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[confirmDel,setConfirmDel]=useState(null);
   const[expandedCat,setExpandedCat]=useState(null);
-  const[showAtualizarMenu,setShowAtualizarMenu]=useState(false);
+  const[showAtualizarMenu,setShowAtualizarMenu]=useState(false);const[legadoPulados,setLegadoPulados]=useState([]);
   const importRanRef=useRef(null);
   const uploadRef=useRef(null);
   const[uploadingFile,setUploadingFile]=useState(false);
@@ -553,7 +553,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
       const r=await apiFetch(endpoint,{method:'POST',body:JSON.stringify({force:true})});
       if(!r.job_id){setPipelineStage('done');setToast({message:successMsg(r),type:'success'});setTimeout(()=>load(),1000);return;}
       const job=await new Promise((resolve,reject)=>{let n=0;const t=setInterval(async()=>{if(++n>600){clearInterval(t);reject(new Error('Timeout: geração excedeu 30 minutos'));return;}try{const j=await apiFetch('/reports/job/'+r.job_id);const s=SMAP[j.etapa];if(s){setPipelineStage(s);setPipelineMsg(j.etapa);}if(j.status==='concluido'){clearInterval(t);resolve(j);return;}if(j.status==='erro'){clearInterval(t);reject(new Error(j.erro||'Erro na geração'));return;}}catch(pe){console.warn('[poll]',pe.message);}},3000);});
-      setPipelineStage('done');setToast({message:'RAN gerado! Score: '+(job.score_qualidade||'—')+'/100',type:'success'});setTimeout(()=>load(),1000);
+      setPipelineStage('done');setToast({message:'RAN gerado! Score: '+(job.score_qualidade||'—')+'/100',type:'success'});if(job.arquivos_pulados&&job.arquivos_pulados.length>0)setLegadoPulados(job.arquivos_pulados);setTimeout(()=>load(),1000);
     }catch(e){setToast({message:e.message,type:'error'});}
     finally{setGenerating(false);setPipelineStage(null);}
   };
@@ -638,6 +638,8 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
             )}
           </div>
         )}
+
+        {legadoPulados.length>0&&<div style={{background:'#fff8e1',border:'1px solid #ffe082',borderRadius:10,padding:'12px 14px',marginBottom:14}}><div style={{fontWeight:700,fontSize:13,color:'#b45309',marginBottom:6}}>⚠ Arquivos não lidos na geração ({legadoPulados.length})</div><div style={{fontSize:12,color:'#92400e',marginBottom:8}}>Os arquivos abaixo existiam apenas no Google Drive e precisam ser re-enviados para o sistema.</div>{legadoPulados.map((p,i)=><div key={i} style={{fontSize:11,color:'#78350f',padding:'3px 0',borderTop:i>0?'1px solid #fde68a':'none'}}>{p.categoria&&<span style={{background:'#fde68a',borderRadius:4,padding:'1px 5px',marginRight:6,fontWeight:600}}>{p.categoria}</span>}{p.name}</div>)}<button onClick={()=>setLegadoPulados([])} style={{marginTop:8,fontSize:11,color:'#92400e',background:'none',border:'none',cursor:'pointer',textDecoration:'underline'}}>Dispensar</button></div>}
 
         {/* Relatórios */}
         {reports.length>0&&(
