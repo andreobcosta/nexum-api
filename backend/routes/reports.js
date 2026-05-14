@@ -81,14 +81,24 @@ async function coletarDadosPaciente(patientId, filesSnap) {
     if (!dataPackage[folderName]) dataPackage[folderName] = [];
 
     if (file.transcription) {
+      let textoFinal = file.transcription;
+      let fonte = 'transcrição renomeada';
+      if (file.transcricao_comprimida) {
+        const c = file.transcricao_comprimida;
+        const pontosStr = c.pontos_clinicos ? Object.entries(c.pontos_clinicos).filter(([,v])=>v).map(([k,v])=>`  ${k}: ${typeof v==='object'?JSON.stringify(v):v}`).join('\n') : '  (sem dados)';
+        const obsStr = Array.isArray(c.observacoes_comportamentais) && c.observacoes_comportamentais.length > 0 ? c.observacoes_comportamentais.map(o=>`  - "${o}"`).join('\n') : '  (nenhuma)';
+        const locutoresStr = c.locutores_identificados ? JSON.stringify(c.locutores_identificados) : '{}';
+        textoFinal = `=== EXTRAÇÃO CLÍNICA ESTRUTURADA ===\nLocutores: ${locutoresStr}\n\nPontos clínicos:\n${pontosStr}\n\nObservações comportamentais (literais):\n${obsStr}\n\n=== TRANSCRIÇÃO COMPLETA ===\n${file.transcription}`;
+        fonte = 'comprimido+transcrição';
+      }
       dataPackage[folderName].push({
         name: file.original_name,
         type: 'text/plain',
-        transcription: file.transcription,
+        transcription: textoFinal,
         content: null,
         source: 'firestore_transcription'
       });
-      usados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: 'transcrição no Firestore' });
+      usados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: fonte });
     } else if (file.storage_path) {
       try {
         const buffer = await storage.downloadFile(file.storage_path);
