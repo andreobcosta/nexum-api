@@ -89,15 +89,16 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
   const errors = [];
   try {
     const { patient_id, category } = req.body;
-    if (!patient_id || !category || !req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'patient_id, category e pelo menos um arquivo são obrigatórios' });
+    if (!patient_id || !req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'patient_id e pelo menos um arquivo são obrigatórios' });
     }
     const db = getDb();
     const patientDoc = await db.collection('patients').doc(patient_id).get();
     if (!patientDoc.exists) return res.status(404).json({ error: 'Paciente não encontrado' });
     const patient = patientDoc.data();
     if (!patient.drive_folder_id) return res.status(400).json({ error: 'Paciente sem pasta no Drive' });
-    const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, category);
+    const driveCat = category || 'externo';
+    const subfolderId = await drive.getSubfolderId(patient.drive_folder_id, driveCat);
 
     for (const file of req.files) {
       try {
@@ -113,7 +114,7 @@ router.post('/upload', upload.array('file', 20), async (req, res) => {
           patient_id,
           original_name: file.originalname,
           file_type: fileType,
-          category,
+          category: category || null,
           drive_file_id: driveFile.id,
           drive_folder_id: subfolderId,
           transcription: null,
@@ -279,7 +280,7 @@ router.patch('/:patient_id/:file_id', async (req, res) => {
       const oldCat = file.category || file.categoria;
       update.category = newCat;
       // Atualiza contadores desnormalizados se categoria mudou
-      if (oldCat && oldCat !== newCat) {
+      if (oldCat !== newCat) {
         const COUNTED = ['anamnese', 'teste', 'sessao', 'externo'];
         const counterUpdate = { updated_at: update.updated_at };
         if (COUNTED.includes(oldCat)) counterUpdate[oldCat + '_count'] = FieldValue.increment(-1);
