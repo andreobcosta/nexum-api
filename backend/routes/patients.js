@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db/firestore');
-const drive = require('../services/drive');
 
 // GET /api/patients
 router.get('/', async (req, res) => {
@@ -63,8 +62,6 @@ router.post('/', async (req, res) => {
     const { full_name, birth_date, age, grade, handedness, medications, guardians } = req.body;
     if (!full_name) return res.status(400).json({ error: 'Nome completo é obrigatório' });
     const id = uuidv4();
-    const year = new Date().getFullYear();
-    const driveResult = await drive.createPatientFolders(full_name, year);
     const now = new Date().toISOString();
     const db = getDb();
     await db.collection('patients').doc(id).set({
@@ -75,7 +72,6 @@ router.post('/', async (req, res) => {
       handedness: handedness || 'Não informado',
       medications: medications || null,
       guardians: guardians || null,
-      drive_folder_id: driveResult.rootFolderId,
       status: 'em_avaliacao',
       anamnese_count: 0, teste_count: 0, sessao_count: 0, externo_count: 0, reports_count: 0,
       pipeline_ativo: false,
@@ -85,15 +81,13 @@ router.post('/', async (req, res) => {
     await db.collection('activity_log').add({
       patient_id: id,
       action: 'patient_created',
-      details: JSON.stringify({ drive_folder: driveResult.rootFolderName }),
+      details: JSON.stringify({ full_name }),
       created_at: now
     });
     res.status(201).json({
       id,
       full_name,
-      drive_folder_id: driveResult.rootFolderId,
-      subfolders: driveResult.subfolders,
-      message: `Paciente criado com pasta no Drive: ${driveResult.rootFolderName}`
+      message: `Paciente criado: ${full_name}`
     });
   } catch (err) {
     console.error(err);

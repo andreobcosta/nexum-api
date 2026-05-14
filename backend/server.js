@@ -85,25 +85,5 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n  Nexum API v2.0 — http://0.0.0.0:${PORT} — commit: ${process.env.DEPLOY_SHA || 'local'}\n`);
 
-  if (process.env.APP_URL) {
-    setTimeout(async () => {
-      try {
-        const { registrarTodosWebhooks, renovarWebhooksVencendo } = require('./services/drive-sync');
-        await renovarWebhooksVencendo();
-        await registrarTodosWebhooks();
-        console.log('[DriveSync] Webhooks inicializados');
-      } catch (err) {
-        console.error('[DriveSync] Erro na inicialização:', err.message);
-      }
-    }, 5000);
-
-    setInterval(async () => {
-      try {
-        const { renovarWebhooksVencendo } = require('./services/drive-sync');
-        await renovarWebhooksVencendo();
-      } catch (err) {
-        console.error('[DriveSync] Erro na renovação:', err.message);
-      }
-    }, 12 * 60 * 60 * 1000);
-  }
+  // DriveSync removido — sistema migrado para Google Cloud Storage
 });
