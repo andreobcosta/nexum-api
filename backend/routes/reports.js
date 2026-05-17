@@ -457,29 +457,34 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     const { processDataPackage } = require('../services/pdf-extractor');
     const novosSections = [];
     for (const file of todosArquivos) {
-      const folderName = CATEGORY_LABEL[file.category] || file.category || 'Sem categoria';
-      novosSections.push('\n### [NOVO] ' + file.original_name + ' (' + folderName + ')');
+      if (file.eligibility_status === 'ineligible') continue;
 
-      if (file.transcription) {
-        const transcStr = typeof file.transcription === 'object'
+      const folderName = CATEGORY_LABEL[file.category] || file.category || 'Sem categoria';
+      let conteudo = null;
+
+      if (file.pre_extracted_content) {
+        conteudo = file.pre_extracted_content;
+      } else if (file.file_type === 'note' && file.transcription) {
+        conteudo = typeof file.transcription === 'object'
           ? (file.transcription.transcricao || '')
           : file.transcription;
-        novosSections.push(transcStr || '[Transcrição vazia]');
-      } else if (file.pre_extracted_content) {
-        novosSections.push(file.pre_extracted_content);
-      } else if (file.storage_path && file.eligibility_status !== 'ineligible') {
+      } else if (file.storage_path) {
         try {
           const buffer = await storage.downloadFile(file.storage_path);
           const mimeType = file.file_type === 'image' ? 'image/jpeg' : 'application/pdf';
           const pkgResult = await processDataPackage({ _: [{ name: file.original_name, type: mimeType, content: buffer.toString('base64') }] });
-          const extracted = pkgResult.processed?._ ?.[0]?.content;
-          novosSections.push(extracted || '[Extração sem conteúdo útil]');
+          conteudo = pkgResult.processed?._ ?.[0]?.content || null;
+          if (!conteudo) console.warn('[Reports] Extração sem conteúdo para:', file.original_name);
         } catch (extractErr) {
           console.warn('[Reports] Falha ao extrair arquivo na atualização:', file.original_name, extractErr.message);
-          novosSections.push('[Falha ao extrair conteúdo]');
         }
       } else {
-        novosSections.push('[Arquivo sem conteúdo disponível]');
+        console.warn('[Reports] Arquivo legado sem storage_path (ignorado):', file.original_name);
+      }
+
+      if (conteudo) {
+        novosSections.push('\n### [NOVO] ' + file.original_name + ' (' + folderName + ')');
+        novosSections.push(conteudo);
       }
     }
 
