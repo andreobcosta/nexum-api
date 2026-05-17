@@ -1,5 +1,5 @@
 # Nexum — Documento de Requisitos do Sistema
-**Versão:** 4.3  
+**Versão:** 4.4  
 **Data:** 17/05/2026  
 **Status:** Em evolução — SaaS Multidisciplinar
 
@@ -79,7 +79,7 @@ Escopo: apenas a clínica da qual é administrador.
 | Ver todos os pacientes da clínica | ✅ |
 | Transferir paciente entre profissionais | ✅ |
 | Ver relatórios de todos os profissionais | ✅ (somente leitura) |
-| Ver custos de todos os profissionais da clínica | ✅ |
+| Ver custos de todos os profissionais da clínica | ❌ |
 | Ver activity log da clínica | ✅ |
 | Editar instrumentos privados de outro profissional | ❌ |
 
@@ -94,7 +94,7 @@ Escopo: profissionais da clínica selecionados pelo Admin Clínica. O Supervisor
 | Ver relatórios de profissionais específicos | ✅ |
 | Transferir paciente entre profissionais | ✅ |
 | Ver activity log da clínica (somente leitura) | ✅ |
-| Ver custos de profissionais selecionados | ✅ |
+| Ver custos de profissionais selecionados | ❌ (nunca) |
 | Editar dados de pacientes de outros profissionais | ❌ (nunca) |
 | Editar system prompt ou motor config | ❌ (nunca) |
 | Acessar dados de outras clínicas | ❌ (nunca) |
@@ -130,7 +130,7 @@ Escopo: apenas os próprios pacientes e documentos dentro da clínica.
 | Gerar e editar próprios documentos | ✅ |
 | Configurar próprio perfil e templates | ✅ |
 | Configurar próprias áreas de atuação | ✅ |
-| Ver custos dos próprios documentos | ✅ |
+| Ver custos dos próprios documentos | ❌ |
 | Ver / editar documentos de outro profissional | ❌ |
 | Editar system prompt ou motor config | ❌ |
 
@@ -487,7 +487,8 @@ Documento salvo no Firestore + DOCX no GCS
 ```
 
 **Histórico de geração:**
-- Cada geração fica registrada com: data/hora de início, data/hora de conclusão, status final, etapas concluídas, custo de IA
+- Cada geração fica registrada com: data/hora de início, data/hora de conclusão, status final, etapas concluídas
+- Custo de IA **não aparece no histórico visível ao profissional** — campo `custo_ia_usd` é interno, acessível somente ao Admin Sistema
 - Acessível em aba "Histórico" dentro do relatório
 - Imutável — não pode ser apagado pelo profissional
 
@@ -1129,16 +1130,18 @@ O status é registrado automaticamente no Firestore — sem necessidade de julga
 - Workspaces Anthropic são gratuitos — sem custo adicional para Nexum criar um por clínica
 - `workspace_api_key` de cada clínica armazenada no Google Secret Manager (nunca no Firestore)
 
-### 14.7 Painel de consumo transparente
+### 14.7 Painel de consumo — exclusivo Admin Sistema
 
-**Princípio:** custo nunca aparece no fluxo clínico. Existe apenas em área dedicada.
+**Princípio:** custos monetários (USD, BRL, PTAX, custo por agente) nunca aparecem no fluxo clínico nem para Admin Clínica, Supervisor ou Profissional. Existem apenas na área de administração da plataforma, acessível exclusivamente pelo Admin Sistema (Nexum).
 
-| Camada | Visibilidade |
+| Camada | Visibilidade de custos monetários |
 |---|---|
-| Admin Sistema | Todas as clínicas · MRR/ARR · churn · custo médio por relatório · período configurável |
-| Admin Clínica | Profissionais da clínica + consumo por geração em tempo real |
-| Supervisor | Profissionais sob supervisão (se habilitado) |
-| Profissional | Apenas os próprios documentos |
+| **Admin Sistema** | ✅ Todas as clínicas · MRR/ARR · churn · custo médio por relatório · custo por agente · período configurável |
+| Admin Clínica | ❌ Não vê custos — apenas consumo de quota ("X de Y relatórios usados") |
+| Supervisor | ❌ Não vê custos — nunca, mesmo se Admin Clínica tentar habilitar |
+| Profissional | ❌ Não vê custos — apenas quota consumida |
+
+**Justificativa:** o custo de IA é informação operacional interna da Nexum. Expor para clientes cria expectativa de que valores possam mudar, pressão sobre margens e incompreensão do modelo de assinatura.
 
 **O que o profissional vê (simples e direto):**
 ```
@@ -1150,9 +1153,11 @@ Histórico:
   RAN Completa — Pedro A.   10/05/2026    [overage — R$ 12,00]
 ```
 
-O cliente **não vê USD, PTAX nem taxa cambial** — esses dados são internos da Nexum. A experiência é: plano com X relatórios, adicional custa R$ 12,00.
+**O que o Admin Clínica vê:** apenas quota consumida por profissional — "João: 7 relatórios / Maria: 3 relatórios este mês". Sem valores em reais ou dólares.
 
-Sem estimativa de custo antes da geração — visível somente no histórico após geração.
+O cliente **não vê USD, PTAX nem taxa cambial em nenhuma tela** — esses dados são internos da Nexum. A experiência é: plano com X relatórios, adicional custa R$ 12,00.
+
+Sem estimativa de custo antes da geração. No histórico do profissional: somente data/hora e status — sem campo de custo.
 
 ### 14.8 Armazenamento do custo e saldo
 
@@ -1567,6 +1572,7 @@ O sistema monitora continuamente todos os recursos e **alerta proativamente o Ad
 | Geração assíncrona com `jobs` collection | Evita timeout Cloud Run em gerações longas |
 | Relatórios históricos imutáveis (congelados com perfil da geração) | Integridade clínica e rastreabilidade |
 | Custo nunca exibido no fluxo clínico | Separação entre decisão clínica e decisão financeira |
+| **Custos monetários de IA (USD/BRL/por agente) visíveis APENAS para Admin Sistema** | Admin Clínica, Supervisor e Profissional veem somente consumo de quota ("X de Y relatórios") — não valores em dinheiro; evita pressão sobre margens e incompreensão do modelo de assinatura |
 | System prompt nunca exposto para clínica ou profissional | Proteção da qualidade e consistência do pipeline |
 | Seções emergem do conteúdo — não de catálogo fixo | Evita seções vazias que convidam alucinação |
 | Documento final = importado pelo profissional | Status `revisado` só via importação de DOCX editado |
