@@ -80,6 +80,12 @@ async function coletarDadosPaciente(patientId, filesSnap) {
     const folderName = CATEGORY_LABEL[cat] || cat || 'Sem categoria';
     if (!dataPackage[folderName]) dataPackage[folderName] = [];
 
+    // Ignorar arquivos marcados como inelegíveis — não servem para geração
+    if (file.eligibility_status === 'ineligible') {
+      pulados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: 'inelegível: ' + (file.eligibility_reason || 'desconhecido') });
+      continue;
+    }
+
     if (file.transcription) {
       let textoFinal = file.transcription;
       let fonte = 'transcrição renomeada';
@@ -99,6 +105,17 @@ async function coletarDadosPaciente(patientId, filesSnap) {
         source: 'firestore_transcription'
       });
       usados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: fonte });
+    } else if (file.pre_extracted_content) {
+      // Conteúdo pré-extraído na avaliação de elegibilidade — reutiliza sem chamar IA novamente
+      dataPackage[folderName].push({
+        name: file.original_name,
+        type: file.file_type || 'document',
+        transcription: null,
+        content: null,
+        pre_extracted_content: file.pre_extracted_content,
+        source: 'pre_extracted'
+      });
+      usados.push({ name: file.original_name, categoria: cat || 'sem_categoria', motivo: 'pré-extraído' });
     } else if (file.storage_path) {
       try {
         const buffer = await storage.downloadFile(file.storage_path);

@@ -190,6 +190,19 @@ async function processDataPackage(rawDataPackage) {
 
     for (const file of files) {
       try {
+        // Caso 0: Conteúdo pré-extraído na avaliação de elegibilidade — reutiliza sem chamada de IA
+        if (file.pre_extracted_content) {
+          processed[folderName].push({
+            name: file.name,
+            type: 'pre_extraido',
+            content: file.pre_extracted_content,
+            source: 'pre_extracted'
+          });
+          log.push(`✓ ${file.name} — conteúdo pré-extraído reutilizado (${file.pre_extracted_content.length} chars)`);
+          filesProcessed++;
+          continue;
+        }
+
         // Caso 1: Arquivo já tem transcrição (áudio transcrito)
         if (file.transcription) {
           // Defensive: extrai string se transcription foi salvo como objeto (bug B5 em files.js — fixed)

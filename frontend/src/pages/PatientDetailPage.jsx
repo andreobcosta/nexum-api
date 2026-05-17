@@ -34,19 +34,22 @@ export default function PatientDetailPage() {
   const [showConfirmRAN, setShowConfirmRAN] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Poll para atualizar status de transcrição em andamento
-  const hasPendingTranscription = patient?.files &&
-    Object.values(patient.files).flat().some(f => f.status === 'transcribing' || f.status === 'pending_transcription');
+  // Poll para atualizar status de transcrição ou elegibilidade em andamento
+  const hasPendingWork = patient?.files &&
+    Object.values(patient.files).flat().some(f =>
+      f.status === 'transcribing' || f.status === 'pending_transcription' ||
+      f.eligibility_status === 'pending'
+    );
 
   useEffect(() => {
     loadPatient();
   }, [id]);
 
   useEffect(() => {
-    if (!hasPendingTranscription) return;
+    if (!hasPendingWork) return;
     const interval = setInterval(loadPatient, 8000);
     return () => clearInterval(interval);
-  }, [hasPendingTranscription]);
+  }, [hasPendingWork]);
 
   async function loadPatient() {
     try {
@@ -164,6 +167,23 @@ export default function PatientDetailPage() {
         </span>
       );
     }
+    if (file.eligibility_status === 'pending') {
+      return (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--amber)' }}>
+          <Clock style={{ width: 11, height: 11 }} /> Avaliando...
+        </span>
+      );
+    }
+    if (file.eligibility_status === 'ineligible') {
+      return (
+        <span style={{ fontSize: 11, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 3 }} title={file.eligibility_message || 'Arquivo inelegível'}>
+          ❌ Inelegível
+        </span>
+      );
+    }
+    if (file.eligibility_status === 'eligible' || file.eligibility_status === 'enhanced_eligible') {
+      return <span style={{ fontSize: 11, color: 'var(--green)' }}>✅ Elegível</span>;
+    }
     if (file.transcription) {
       return <span style={{ fontSize: 11, color: 'var(--green)' }}>✓ Transcrito</span>;
     }
@@ -231,7 +251,7 @@ export default function PatientDetailPage() {
           const hasFils = count > 0;
           const isOpen = openFolder === key;
           const files = getFilesForFolder(key);
-          const hasTranscribing = files.some(f => f.status === 'transcribing' || f.status === 'pending_transcription');
+          const hasTranscribing = files.some(f => f.status === 'transcribing' || f.status === 'pending_transcription' || f.eligibility_status === 'pending');
 
           return (
             <div key={key}>
@@ -243,7 +263,7 @@ export default function PatientDetailPage() {
                   <span className="folder-name">
                     {label}
                     {required && !hasFils && <span style={{ color: 'var(--amber)', fontSize: 11, marginLeft: 6 }}>necessário</span>}
-                    {hasTranscribing && <span style={{ color: 'var(--amber)', fontSize: 11, marginLeft: 6 }}>⟳ transcrevendo</span>}
+                    {hasTranscribing && <span style={{ color: 'var(--amber)', fontSize: 11, marginLeft: 6 }}>⟳ processando</span>}
                   </span>
                   <span className="folder-count" style={{ marginRight: 4 }}>{count > 0 ? count : ''}</span>
                   {hasFils && (isOpen

@@ -8,7 +8,7 @@ const { getDb } = require('../db/firestore');
 const { FieldValue } = require('@google-cloud/firestore');
 const storage = require('../services/storage');
 const { transcribeAudio } = require('../services/transcription');
-const { extractTextFromFile } = require('../services/pdf-extractor');
+const { assessEligibilityInBackground } = require('../services/eligibility');
 
 const upload = multer({
   dest: path.join(__dirname, '..', 'temp'),
@@ -60,29 +60,6 @@ async function transcribeInBackground(patient_id, fileId, storagePath, originalN
   }
 }
 
-async function scoreImageInBackground(patient_id, fileId, storagePath, originalName) {
-  const db = getDb();
-  const fileRef = db.collection('patients').doc(patient_id).collection('files').doc(fileId);
-  try {
-    console.log('[SCORE-LEGIBILIDADE] Iniciando para', originalName);
-    const buffer = await storage.downloadFile(storagePath);
-    const base64 = buffer.toString('base64');
-    const result = await extractTextFromFile(base64, 'image/jpeg', originalName);
-    if (!result || !result.text) {
-      await fileRef.update({ legibility_score: 0, legibility_label: 'baixa' });
-      return;
-    }
-    const ilegCount = (result.text.match(/\[ILEGÍVEL\]/g) || []).length;
-    const ilegRatio = result.text.length > 0 ? (ilegCount * 10) / result.text.length : 1;
-    const score = Math.round(Math.max(0, Math.min(100, 100 - ilegRatio * 500)));
-    const label = score >= 70 ? 'boa' : score >= 40 ? 'parcial' : 'baixa';
-    await fileRef.update({ legibility_score: score, legibility_label: label });
-    console.log('[SCORE-LEGIBILIDADE] ' + originalName + ' — score:' + score + ' (' + label + ')');
-  } catch (err) {
-    console.warn('[SCORE-LEGIBILIDADE] Erro para', originalName, ':', err.message);
-  }
-}
-
 // POST /api/files/upload
 router.post('/upload', upload.array('file', 50), async (req, res) => {
   const results = [];
@@ -124,10 +101,10 @@ router.post('/upload', upload.array('file', 50), async (req, res) => {
         if (isAudio) {
           transcribeInBackground(patient_id, fileId, destPath, file.originalname, file.mimetype)
             .catch(e => console.error('[AUTO-TRANSCRIÇÃO] Falha silenciosa:', e.message));
-        }
-        if (isImage) {
-          scoreImageInBackground(patient_id, fileId, destPath, file.originalname)
-            .catch(e => console.warn('[SCORE-LEGIBILIDADE] Falha silenciosa:', e.message));
+        } else {
+          // Avaliação de elegibilidade para todos os não-áudio (PDF, imagem, DOCX, TXT)
+          assessEligibilityInBackground(patient_id, fileId, destPath, file.originalname, file.mimetype, getDb(), storage)
+            .catch(e => console.warn('[ELEGIBILIDADE] Falha silenciosa:', e.message));
         }
 
       } catch (fileErr) {
