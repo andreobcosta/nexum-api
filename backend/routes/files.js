@@ -55,11 +55,8 @@ router.post('/upload', upload.array('file', 50), async (req, res) => {
           created_at: now
         });
 
-        results.push({ id: fileId, name: file.originalname, type: fileType, storage_path: destPath });
-
-        // Avaliação de elegibilidade para todos os arquivos (PDF, imagem, DOCX, TXT)
-        assessEligibilityInBackground(patient_id, fileId, destPath, file.originalname, file.mimetype, getDb(), storage)
-          .catch(e => console.warn('[ELEGIBILIDADE] Falha silenciosa:', e.message));
+        results.push({ id: fileId, name: file.originalname, type: fileType, storage_path: destPath,
+          _eligibility: { patient_id, fileId, destPath, originalName: file.originalname, mimeType: file.mimetype } });
 
       } catch (fileErr) {
         console.error('[Files] Erro ao processar arquivo:', file.originalname, '|', fileErr.message);
@@ -68,6 +65,18 @@ router.post('/upload', upload.array('file', 50), async (req, res) => {
         if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
       }
     }
+
+    // Avaliação de elegibilidade serializada — uma por vez para evitar rate limit (429) da Claude API
+    const toAssess = results.map(r => r._eligibility).filter(Boolean);
+    results.forEach(r => delete r._eligibility);
+    let eligibilityChain = Promise.resolve();
+    for (const e of toAssess) {
+      eligibilityChain = eligibilityChain.then(() =>
+        assessEligibilityInBackground(e.patient_id, e.fileId, e.destPath, e.originalName, e.mimeType, getDb(), storage)
+          .catch(err => console.warn('[ELEGIBILIDADE] Falha silenciosa:', err.message))
+      );
+    }
+    eligibilityChain.catch(() => {});
 
     const now = new Date().toISOString();
     const countUpdate = { updated_at: now };
