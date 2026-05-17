@@ -52,6 +52,7 @@ router.post('/upload', upload.array('file', 50), async (req, res) => {
           transcription: null,
           metadata: JSON.stringify({ size: file.size, mimeType: file.mimetype }),
           status: 'uploaded',
+          eligibility_status: 'pending',
           created_at: now
         });
 

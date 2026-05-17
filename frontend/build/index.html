@@ -508,7 +508,7 @@ function FileItem({f,patientId,onDeleted,onCategoryChanged,onError,onPreviewFile
         </div>
         {f.file_type==='note'&&<div style={{fontSize:10,color:V.green,marginTop:2,marginLeft:20}}>✅ Elegível</div>}
         {f.file_type!=='note'&&f.transcription&&<div style={{fontSize:10,color:V.green,marginTop:2,marginLeft:20}}>✓ Transcrito</div>}
-        {f.file_type!=='note'&&!f.transcription&&<div style={{fontSize:10,color:f.eligibility_status==='eligible'||f.eligibility_status==='enhanced_eligible'?V.green:f.eligibility_status==='ineligible'?V.red:V.amber,marginTop:2,marginLeft:20}} title={f.eligibility_status==='ineligible'?f.eligibility_message||'Arquivo inelegível':''}>{f.eligibility_status==='eligible'||f.eligibility_status==='enhanced_eligible'?'✅ Elegível':f.eligibility_status==='ineligible'?'❌ Inelegível':'⏳ Avaliando...'}</div>}
+        {f.file_type!=='note'&&!f.transcription&&<div style={{fontSize:10,color:f.eligibility_status==='eligible'||f.eligibility_status==='enhanced_eligible'?V.green:f.eligibility_status==='ineligible'?V.red:f.eligibility_status==='pending'?V.amber:V.green,marginTop:2,marginLeft:20}} title={f.eligibility_status==='ineligible'?f.eligibility_message||'Arquivo inelegível':''}>{f.eligibility_status==='eligible'||f.eligibility_status==='enhanced_eligible'||!f.eligibility_status?'✅ Elegível':f.eligibility_status==='ineligible'?'❌ Inelegível':'⏳ Avaliando...'}</div>}
       </div>
       <div>
         <select value={f.category||f.categoria||''} onChange={e=>changeCategory(e.target.value)} style={{width:'100%',fontSize:11,padding:'4px 6px',border:'1px solid '+V.sand3,borderRadius:6,background:V.white,color:(f.category||f.categoria)?V.ink:V.ink3,fontFamily:'inherit',cursor:'pointer'}}>
@@ -546,7 +546,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
 
   const load=useCallback(()=>{setLoading(true);apiFetch('/patients/'+patientId).then(setPatient).catch(console.error).finally(()=>setLoading(false))},[patientId]);
   useEffect(()=>{load()},[load]);
-  useEffect(()=>{const allFiles=[].concat(...Object.values((patient&&patient.files)||{}));const hasPending=allFiles.some(f=>!f.transcription&&(!f.eligibility_status||f.eligibility_status==='pending'));if(!hasPending)return;const t=setInterval(load,4000);return()=>clearInterval(t);},[patient,load]);
+  useEffect(()=>{const allFiles=[].concat(...Object.values((patient&&patient.files)||{}));const hasPending=allFiles.some(f=>f.eligibility_status==='pending');if(!hasPending)return;const t=setInterval(load,4000);return()=>clearInterval(t);},[patient,load]);
 
   const runPipeline=async(endpoint,successMsg)=>{
     setGenerating(true);setPipelineStage('analitico');setPipelineMsg('Iniciando...');
