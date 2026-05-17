@@ -7,58 +7,12 @@ const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../db/firestore');
 const { FieldValue } = require('@google-cloud/firestore');
 const storage = require('../services/storage');
-const { transcribeAudio } = require('../services/transcription');
 const { assessEligibilityInBackground } = require('../services/eligibility');
 
 const upload = multer({
   dest: path.join(__dirname, '..', 'temp'),
   limits: { fileSize: 500 * 1024 * 1024, files: 50 }
 });
-
-// Transcreve áudio em background após upload
-async function transcribeInBackground(patient_id, fileId, storagePath, originalName, mimeType) {
-  const db = getDb();
-  const fileRef = db.collection('patients').doc(patient_id).collection('files').doc(fileId);
-  let tempPath = null;
-  try {
-    console.log('[AUTO-TRANSCRIÇÃO] Iniciando para', originalName);
-    await fileRef.update({ status: 'transcribing' });
-
-    const buffer = await storage.downloadFile(storagePath);
-    tempPath = path.join(__dirname, '..', 'temp', 'transcribe_' + uuidv4());
-    fs.writeFileSync(tempPath, buffer);
-
-    const resultado = await transcribeAudio(tempPath, mimeType, originalName);
-    const transcricao = resultado.transcricao;
-    const comprimido = resultado.comprimido;
-    const now = new Date().toISOString();
-
-    await fileRef.update({ transcription: transcricao, transcricao_comprimida: comprimido || null, status: 'transcribed', transcribed_at: now });
-
-    // Salva .txt no Storage
-    try {
-      const txtName = originalName.replace(/\.[^.]+$/, '') + '_transcricao.txt';
-      const txtPath = storage.filePath(patient_id, fileId + '_txt', txtName);
-      const txtBuffer = Buffer.from('TRANSCRICAO — ' + originalName + '\nGerada em: ' + now + '\n\n' + transcricao, 'utf-8');
-      await storage.uploadBuffer(txtBuffer, txtPath, 'text/plain');
-    } catch (e) {
-      console.warn('[AUTO-TRANSCRIÇÃO] Nao salvou .txt no Storage:', e.message);
-    }
-
-    await db.collection('activity_log').add({
-      patient_id, action: 'file_transcribed',
-      details: JSON.stringify({ file_id: fileId, name: originalName, auto: true }),
-      created_at: new Date().toISOString()
-    });
-
-    console.log('[AUTO-TRANSCRIÇÃO] Concluída para', originalName);
-  } catch (err) {
-    console.error('[AUTO-TRANSCRIÇÃO] Erro em', originalName, ':', err.message);
-    try { await fileRef.update({ status: 'transcription_failed' }); } catch (_) {}
-  } finally {
-    if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-  }
-}
 
 // POST /api/files/upload
 router.post('/upload', upload.array('file', 50), async (req, res) => {
@@ -75,10 +29,15 @@ router.post('/upload', upload.array('file', 50), async (req, res) => {
 
     for (const file of req.files) {
       try {
+        // Áudio desativado — funcionalidade descontinuada
+        if (file.mimetype.startsWith('audio/') || file.mimetype === 'video/webm') {
+          errors.push({ name: file.originalname, error: 'Upload de áudio desativado. Envie PDF, imagem ou documento de texto.' });
+          continue;
+        }
+
         const fileId = uuidv4();
-        const isAudio = file.mimetype.startsWith('audio/') || file.mimetype === 'video/webm';
         const isImage = file.mimetype.startsWith('image/');
-        const fileType = isAudio ? 'audio' : isImage ? 'image' : 'document';
+        const fileType = isImage ? 'image' : 'document';
 
         const destPath = storage.filePath(patient_id, fileId, file.originalname);
         await storage.uploadFile(file.path, destPath, file.mimetype);
@@ -92,20 +51,15 @@ router.post('/upload', upload.array('file', 50), async (req, res) => {
           storage_path: destPath,
           transcription: null,
           metadata: JSON.stringify({ size: file.size, mimeType: file.mimetype }),
-          status: isAudio ? 'pending_transcription' : 'uploaded',
+          status: 'uploaded',
           created_at: now
         });
 
-        results.push({ id: fileId, name: file.originalname, type: fileType, storage_path: destPath, transcribing: isAudio });
+        results.push({ id: fileId, name: file.originalname, type: fileType, storage_path: destPath });
 
-        if (isAudio) {
-          transcribeInBackground(patient_id, fileId, destPath, file.originalname, file.mimetype)
-            .catch(e => console.error('[AUTO-TRANSCRIÇÃO] Falha silenciosa:', e.message));
-        } else {
-          // Avaliação de elegibilidade para todos os não-áudio (PDF, imagem, DOCX, TXT)
-          assessEligibilityInBackground(patient_id, fileId, destPath, file.originalname, file.mimetype, getDb(), storage)
-            .catch(e => console.warn('[ELEGIBILIDADE] Falha silenciosa:', e.message));
-        }
+        // Avaliação de elegibilidade para todos os arquivos (PDF, imagem, DOCX, TXT)
+        assessEligibilityInBackground(patient_id, fileId, destPath, file.originalname, file.mimetype, getDb(), storage)
+          .catch(e => console.warn('[ELEGIBILIDADE] Falha silenciosa:', e.message));
 
       } catch (fileErr) {
         console.error('[Files] Erro ao processar arquivo:', file.originalname, '|', fileErr.message);
@@ -127,9 +81,8 @@ router.post('/upload', upload.array('file', 50), async (req, res) => {
       created_at: now
     });
 
-    const hasAudio = results.some(r => r.transcribing);
     res.status(201).json({
-      message: `${results.length} arquivo(s) enviado(s)${hasAudio ? ' — áudio(s) sendo transcritos em background' : ''}${errors.length > 0 ? `, ${errors.length} erro(s)` : ''}`,
+      message: `${results.length} arquivo(s) enviado(s)${errors.length > 0 ? `, ${errors.length} erro(s)` : ''}`,
       uploaded: results,
       errors
     });

@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mic, Camera, FileUp, StickyNote, Send, X } from 'lucide-react';
-import { useAudioRecorder } from '../hooks/useAudioRecorder';
+import { ArrowLeft, Camera, FileUp, StickyNote, Send } from 'lucide-react';
 import { api } from '../utils/api';
 
 const CATEGORIES = [
@@ -22,7 +21,6 @@ export default function UploadPage() {
   const [noteTitle, setNoteTitle] = useState('');
   const fileInput = useRef(null);
   const cameraInput = useRef(null);
-  const recorder = useAudioRecorder();
 
   function showToast(msg) {
     setToast(msg);
@@ -44,12 +42,6 @@ export default function UploadPage() {
     } finally {
       setUploading(false);
     }
-  }
-
-  async function handleSendAudio() {
-    if (!recorder.audioBlob) return;
-    const file = new File([recorder.audioBlob], `gravacao_${Date.now()}.webm`, { type: 'audio/webm' });
-    await uploadFile(file);
   }
 
   async function handleSendNote() {
@@ -108,11 +100,6 @@ export default function UploadPage() {
         <CategoryPicker />
 
         <div className="upload-grid">
-          <button className="upload-option" onClick={() => setMode('audio')}>
-            <Mic />
-            <span className="label">Gravar áudio</span>
-            <span className="desc">Anamnese ou sessão</span>
-          </button>
           <button className="upload-option" onClick={() => { setMode('camera'); setTimeout(() => cameraInput.current?.click(), 100); }}>
             <Camera />
             <span className="label">Tirar foto</span>
@@ -132,51 +119,6 @@ export default function UploadPage() {
 
         <input ref={fileInput} type="file" accept=".pdf,.doc,.docx" hidden onChange={handleFileChange} />
         <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={handleFileChange} />
-      </div>
-    );
-  }
-
-  // Tela de gravação de áudio
-  if (mode === 'audio') {
-    return (
-      <div>
-        {toast && <div className="toast">{toast}</div>}
-        <button onClick={() => { recorder.reset(); setMode(null); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', color: 'var(--green)', fontSize: 14, marginBottom: 20, fontWeight: 500 }}>
-          <ArrowLeft style={{ width: 18, height: 18 }} /> Voltar
-        </button>
-
-        <CategoryPicker />
-
-        <div className={`recorder ${recorder.isRecording ? 'recording' : ''}`}>
-          <button className={`rec-button ${recorder.isRecording ? 'recording' : ''}`}
-            onClick={recorder.isRecording ? recorder.stop : recorder.start}>
-            <div className="rec-inner" />
-          </button>
-          <div className="rec-time">{recorder.formatDuration()}</div>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 8 }}>
-            {recorder.isRecording ? 'Gravando... toque para parar' :
-             recorder.audioBlob ? 'Gravação concluída' : 'Toque para gravar'}
-          </p>
-        </div>
-
-        {recorder.audioBlob && !recorder.isRecording && (
-          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-            <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => recorder.reset()}>
-              <X style={{ width: 16, height: 16 }} /> Descartar
-            </button>
-            <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSendAudio} disabled={uploading}>
-              {uploading ? <div className="spinner" style={{ borderTopColor: 'white' }} /> :
-                <><Send style={{ width: 16, height: 16 }} /> Enviar e transcrever</>}
-            </button>
-          </div>
-        )}
-
-        {uploading && (
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 12 }}>
-            Enviando... A transcrição será feita em background.
-          </p>
-        )}
       </div>
     );
   }
