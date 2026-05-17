@@ -532,8 +532,7 @@ async function generateRAN(systemPromptRAN, patientInfo, rawCollectedData, onPro
 }
 
 // ── PIPELINE DE ATUALIZAÇÃO — Diff → Redator → Revisor
-async function updateRAN(systemPromptRAN, patientInfo, ranExistente, rawNovosDocumentos, onProgress) {
-  const { processDataPackage } = require('./pdf-extractor');
+async function updateRAN(systemPromptRAN, patientInfo, ranExistente, novosDocumentosStr, onProgress) {
   const startTime = Date.now();
   const log = (agent, msg) => {
     console.log('[' + agent.toUpperCase() + '] ' + msg);
@@ -541,19 +540,6 @@ async function updateRAN(systemPromptRAN, patientInfo, ranExistente, rawNovosDoc
   };
 
   log('pipeline', 'Iniciando ATUALIZAÇÃO RAN para ' + patientInfo.full_name);
-
-  // Pré-processa novos documentos
-  const { processed: processedNovos, meta: extractionMeta } = await processDataPackage(rawNovosDocumentos);
-
-  // Monta string de novos documentos processados
-  const novosSections = [];
-  for (const [folderName, files] of Object.entries(processedNovos)) {
-    for (const file of files) {
-      novosSections.push('\n### [NOVO] ' + file.name + ' (' + folderName + ')');
-      novosSections.push(file.content || '[Sem conteúdo]');
-    }
-  }
-  const novosDocumentosStr = novosSections.join('\n');
 
   // Diff
   const { diff, cost: costDiff } = await agentDiff(ranExistente, novosDocumentosStr, patientInfo, log);
@@ -586,7 +572,6 @@ async function updateRAN(systemPromptRAN, patientInfo, ranExistente, rawNovosDoc
 
   const elapsed = Math.round((Date.now() - startTime) / 1000);
   const totalCost = parseFloat((
-    extractionMeta.extraction_cost_usd +
     costDiff.cost_usd +
     costRedator.cost_usd +
     costRevisor.cost_usd

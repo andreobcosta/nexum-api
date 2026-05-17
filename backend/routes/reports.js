@@ -414,10 +414,11 @@ router.delete('/:patient_id/:report_id', async (req, res) => {
 router.post('/update/:patient_id/:report_id', async (req, res) => {
   try {
     const db = getDb();
+    const patRef = db.collection('patients').doc(req.params.patient_id);
 
+    // Limpar job travado (>15 min)
     const TIMEOUT_MS = 15 * 60 * 1000;
-    const pacienteRef = db.collection('patients').doc(req.params.patient_id);
-    const pacienteSnap = await pacienteRef.get();
+    const pacienteSnap = await patRef.get();
     if (pacienteSnap.exists) {
       const pd = pacienteSnap.data();
       if (pd.pipeline_ativo && pd.pipeline_iniciado_em) {
@@ -426,7 +427,7 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
           const jobsSnap = await db.collection('jobs').where('patient_id', '==', req.params.patient_id).where('status', '==', 'processando').get();
           const batch = db.batch();
           jobsSnap.forEach(d => batch.update(d.ref, { status: 'failed', error: 'Timeout automático' }));
-          batch.update(pacienteRef, { pipeline_ativo: false, pipeline_iniciado_em: null });
+          batch.update(patRef, { pipeline_ativo: false, pipeline_iniciado_em: null });
           await batch.commit();
         }
       }
@@ -435,6 +436,10 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     const patientDoc = await db.collection('patients').doc(req.params.patient_id).get();
     if (!patientDoc.exists) return res.status(404).json({ error: 'Paciente não encontrado' });
     const patient = { id: patientDoc.id, ...patientDoc.data() };
+
+    if (patientDoc.data()?.pipeline_ativo) {
+      return res.status(409).json({ error: 'Geração já em andamento para este paciente' });
+    }
 
     const reportDoc = await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(req.params.report_id).get();
     if (!reportDoc.exists) return res.status(404).json({ error: 'Relatório não encontrado' });
@@ -453,95 +458,118 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
       });
     }
 
-    const todosArquivos = req.body.force ? filesSnap.docs.map(d => ({ id: d.id, ...d.data() })) : novosArquivos;
-    const { processDataPackage } = require('../services/pdf-extractor');
-    const novosSections = [];
-    for (const file of todosArquivos) {
-      if (file.eligibility_status === 'ineligible') continue;
+    await patRef.update({ pipeline_ativo: true, pipeline_iniciado_em: new Date().toISOString() });
+    const jobId = uuidv4();
+    const jobRef = db.collection('jobs').doc(jobId);
+    await jobRef.set({ status: 'processando', etapa: 'iniciando', agente: null, patient_id: req.params.patient_id, tipo: 'update', created_at: new Date().toISOString() });
+    res.status(202).json({ job_id: jobId, status: 'processando' });
 
-      const folderName = CATEGORY_LABEL[file.category] || file.category || 'Sem categoria';
-      let conteudo = null;
+    setImmediate(async () => {
+      try {
+        const { processDataPackage } = require('../services/pdf-extractor');
+        const todosArquivos = req.body.force ? filesSnap.docs.map(d => ({ id: d.id, ...d.data() })) : novosArquivos;
 
-      if (file.pre_extracted_content) {
-        conteudo = file.pre_extracted_content;
-      } else if (file.file_type === 'note' && file.transcription) {
-        conteudo = typeof file.transcription === 'object'
-          ? (file.transcription.transcricao || '')
-          : file.transcription;
-      } else if (file.storage_path) {
-        try {
-          const buffer = await storage.downloadFile(file.storage_path);
-          const mimeType = file.file_type === 'image' ? 'image/jpeg' : 'application/pdf';
-          const pkgResult = await processDataPackage({ _: [{ name: file.original_name, type: mimeType, content: buffer.toString('base64') }] });
-          conteudo = pkgResult.processed?._ ?.[0]?.content || null;
-          if (!conteudo) console.warn('[Reports] Extração sem conteúdo para:', file.original_name);
-        } catch (extractErr) {
-          console.warn('[Reports] Falha ao extrair arquivo na atualização:', file.original_name, extractErr.message);
+        await jobRef.update({ etapa: 'Extraindo conteúdo dos documentos' }).catch(() => {});
+
+        const novosSections = [];
+        for (const file of todosArquivos) {
+          if (file.eligibility_status === 'ineligible') continue;
+
+          const folderName = CATEGORY_LABEL[file.category] || file.category || 'Sem categoria';
+          let conteudo = null;
+
+          if (file.pre_extracted_content) {
+            conteudo = file.pre_extracted_content;
+          } else if (file.file_type === 'note' && file.transcription) {
+            conteudo = typeof file.transcription === 'object'
+              ? (file.transcription.transcricao || '')
+              : file.transcription;
+          } else if (file.storage_path) {
+            try {
+              const buffer = await storage.downloadFile(file.storage_path);
+              const mimeType = file.file_type === 'image' ? 'image/jpeg' : 'application/pdf';
+              const pkgResult = await processDataPackage({ _: [{ name: file.original_name, type: mimeType, content: buffer.toString('base64') }] });
+              conteudo = pkgResult.processed?._ ?.[0]?.content || null;
+              if (!conteudo) console.warn('[Reports] Extração sem conteúdo para:', file.original_name);
+            } catch (extractErr) {
+              console.warn('[Reports] Falha ao extrair arquivo na atualização:', file.original_name, extractErr.message);
+            }
+          } else {
+            console.warn('[Reports] Arquivo legado sem storage_path (ignorado):', file.original_name);
+          }
+
+          if (conteudo) {
+            novosSections.push('\n### [NOVO] ' + file.original_name + ' (' + folderName + ')');
+            novosSections.push(conteudo);
+          }
         }
-      } else {
-        console.warn('[Reports] Arquivo legado sem storage_path (ignorado):', file.original_name);
+
+        const novosDocumentos = novosSections.join('\n');
+
+        const ETAPA_MAP = {
+          diff: 'Agente Diff — identificando mudanças',
+          redator: 'Agente Redator — integrando novos dados',
+          revisor: 'Agente Revisor — validando qualidade'
+        };
+        const onProgress = async (agent) => {
+          if (ETAPA_MAP[agent]) await jobRef.update({ etapa: ETAPA_MAP[agent], agente: agent }).catch(() => {});
+        };
+
+        const systemPrompt = await claude.getSystemPrompt();
+        const ranResult = await claude.updateRAN(systemPrompt, patient, ranExistente, novosDocumentos, onProgress);
+        await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null });
+
+        const reportContent = ranResult.relatorio;
+        const ranMeta = { diff: ranResult.diff, revisao: ranResult.revisao, elapsed_seconds: ranResult.elapsed_seconds, updated_from: req.params.report_id };
+
+        const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
+        const version = calcularProximaSubversao(reportsSnap.docs.map(d => d.data()));
+        const reportId = uuidv4();
+        const now = new Date().toISOString();
+
+        const nomeBase = patient.full_name.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+        const reportFileName = `RAN_${nomeBase}_v${version}.docx`;
+        let storagePath = null;
+
+        try {
+          const { gerarDocx } = require('../services/docx-generator');
+          const docxBuf = await gerarDocx(reportContent, nomeBase, req.user?.email, patient);
+          storagePath = storage.reportPath(req.params.patient_id, reportId, reportFileName);
+          await storage.uploadBuffer(docxBuf, storagePath, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          console.log('[Reports] DOCX atualizado salvo no Storage:', storagePath);
+        } catch (uploadErr) {
+          console.warn('[Reports] Erro ao salvar DOCX atualizado no Storage:', uploadErr.message);
+        }
+
+        await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(reportId).set({
+          patient_id: req.params.patient_id, version,
+          storage_path: storagePath, content_md: reportContent,
+          ran_meta: JSON.stringify(ranMeta),
+          status: 'draft', generated_at: now, reviewed_at: null,
+          updated_from_version: reportExistente.version,
+          novos_documentos_count: novosArquivos.length
+        });
+
+        await db.collection('patients').doc(req.params.patient_id).update({ status: 'relatorio_gerado', updated_at: now });
+        await db.collection('activity_log').add({
+          patient_id: req.params.patient_id, action: 'report_updated',
+          details: JSON.stringify({ version, report_id: reportId, from_version: reportExistente.version, novos_docs: novosArquivos.length }),
+          created_at: now
+        });
+
+        await jobRef.update({ status: 'concluido', etapa: 'Relatório atualizado', agente: 'concluido', report_id: reportId, tipo: 'update', score_qualidade: ranResult.revisao?.score_qualidade, completed_at: now });
+
+      } catch (bgErr) {
+        console.error('[Pipeline Update] Erro em background:', bgErr);
+        await jobRef.update({ status: 'erro', erro: bgErr.message }).catch(() => {});
+        await patRef.update({ pipeline_ativo: false, pipeline_iniciado_em: null }).catch(() => {});
       }
-
-      if (conteudo) {
-        novosSections.push('\n### [NOVO] ' + file.original_name + ' (' + folderName + ')');
-        novosSections.push(conteudo);
-      }
-    }
-
-    const novosDocumentos = novosSections.join('\n');
-    const systemPrompt = await claude.getSystemPrompt();
-    const ranResult = await claude.updateRAN(systemPrompt, patient, ranExistente, novosDocumentos);
-
-    const reportContent = ranResult.relatorio;
-    const ranMeta = { diff: ranResult.diff, revisao: ranResult.revisao, elapsed_seconds: ranResult.elapsed_seconds, updated_from: req.params.report_id };
-
-    const reportsSnap = await db.collection('patients').doc(req.params.patient_id).collection('reports').get();
-    const version = calcularProximaSubversao(reportsSnap.docs.map(d => d.data()));
-    const reportId = uuidv4();
-    const now = new Date().toISOString();
-
-    const nomeBase = patient.full_name.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_');
-    const reportFileName = `RAN_${nomeBase}_v${version}.docx`;
-    let storagePath = null;
-
-    try {
-      const { gerarDocx } = require('../services/docx-generator');
-      const docxBuf = await gerarDocx(reportContent, nomeBase, req.user?.email, patient);
-      storagePath = storage.reportPath(req.params.patient_id, reportId, reportFileName);
-      await storage.uploadBuffer(docxBuf, storagePath, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      console.log('[Reports] DOCX atualizado salvo no Storage:', storagePath);
-    } catch (uploadErr) {
-      console.warn('[Reports] Erro ao salvar DOCX atualizado no Storage:', uploadErr.message);
-    }
-
-    await db.collection('patients').doc(req.params.patient_id).collection('reports').doc(reportId).set({
-      patient_id: req.params.patient_id, version,
-      storage_path: storagePath, content_md: reportContent,
-      ran_meta: JSON.stringify(ranMeta),
-      status: 'draft', generated_at: now, reviewed_at: null,
-      updated_from_version: reportExistente.version,
-      novos_documentos_count: novosArquivos.length
     });
 
-    await db.collection('patients').doc(req.params.patient_id).update({ status: 'relatorio_gerado', updated_at: now });
-    await db.collection('activity_log').add({
-      patient_id: req.params.patient_id, action: 'report_updated',
-      details: JSON.stringify({ version, report_id: reportId, from_version: reportExistente.version, novos_docs: novosArquivos.length }),
-      created_at: now
-    });
-
-    res.status(201).json({
-      id: reportId, version, patient: patient.full_name,
-      storage_path: storagePath,
-      novos_documentos: novosArquivos.length,
-      secoes_afetadas: ranResult.diff?.secoes_afetadas || [],
-      score_qualidade: ranMeta.revisao?.score_qualidade,
-      elapsed_seconds: ranMeta.elapsed_seconds,
-      message: `Relatório v${version} atualizado com ${novosArquivos.length} novo(s) documento(s)`
-    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Erro ao atualizar relatório', details: err.message });
+    try { await db.collection('patients').doc(req.params.patient_id).update({ pipeline_ativo: false, pipeline_iniciado_em: null }); } catch {}
+    res.status(500).json({ error: 'Erro ao iniciar atualização', details: err.message });
   }
 });
 
