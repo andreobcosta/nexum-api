@@ -454,14 +454,32 @@ router.post('/update/:patient_id/:report_id', async (req, res) => {
     }
 
     const todosArquivos = req.body.force ? filesSnap.docs.map(d => ({ id: d.id, ...d.data() })) : novosArquivos;
+    const { processDataPackage } = require('../services/pdf-extractor');
     const novosSections = [];
     for (const file of todosArquivos) {
       const folderName = CATEGORY_LABEL[file.category] || file.category || 'Sem categoria';
       novosSections.push('\n### [NOVO] ' + file.original_name + ' (' + folderName + ')');
+
       if (file.transcription) {
-        novosSections.push(file.transcription);
+        const transcStr = typeof file.transcription === 'object'
+          ? (file.transcription.transcricao || '')
+          : file.transcription;
+        novosSections.push(transcStr || '[Transcrição vazia]');
+      } else if (file.pre_extracted_content) {
+        novosSections.push(file.pre_extracted_content);
+      } else if (file.storage_path && file.eligibility_status !== 'ineligible') {
+        try {
+          const buffer = await storage.downloadFile(file.storage_path);
+          const mimeType = file.file_type === 'image' ? 'image/jpeg' : 'application/pdf';
+          const pkgResult = await processDataPackage({ _: [{ name: file.original_name, type: mimeType, content: buffer.toString('base64') }] });
+          const extracted = pkgResult.processed?._ ?.[0]?.content;
+          novosSections.push(extracted || '[Extração sem conteúdo útil]');
+        } catch (extractErr) {
+          console.warn('[Reports] Falha ao extrair arquivo na atualização:', file.original_name, extractErr.message);
+          novosSections.push('[Falha ao extrair conteúdo]');
+        }
       } else {
-        novosSections.push('[Arquivo sem transcrição disponível]');
+        novosSections.push('[Arquivo sem conteúdo disponível]');
       }
     }
 

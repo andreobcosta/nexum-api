@@ -40,6 +40,7 @@ function detectarInstrumento(nomeArquivo) {
   if (!nomeArquivo) return null;
   const nome = nomeArquivo.toLowerCase();
   if (nome.includes('etdah')) return 'ETDAH';
+  if (nome.includes('asrs')) return 'ASRS';
   if (nome.includes('cars')) return 'CARS';
   if (nome.includes('tde')) return 'TDE';
   if (nome.includes('lateralidade')) return 'LATERALIDADE';
@@ -52,6 +53,7 @@ function promptPorInstrumento(tipo) {
   const base = `Para campos manuscritos: transcreva o que conseguir ler, sinalize com [ILEGÍVEL] o que não conseguir.\nPreserve números, datas e valores exatamente como aparecem.\nNÃO interprete os dados — apenas extraia e organize. A interpretação é feita por outro agente.`;
   const prompts = {
     ETDAH:       `Você está extraindo um protocolo ETDAH (Escala de Transtorno de Déficit de Atenção e Hiperatividade).\nExtraia item a item, identificando qual opção foi marcada em cada item (nunca/raramente/às vezes/frequentemente/sempre ou equivalente).\nInclua obrigatoriamente: dados de identificação, todos os itens numerados com a opção marcada, subtotais por fator (RE/HI/CA/A), total geral, percentil e classificação.\n${base}`,
+    ASRS:        `Você está extraindo um protocolo ASRS-18 (Adult ADHD Self-Report Scale) ou sua versão adaptada para avaliação de TDAH.\nExtraia cada um dos 18 itens com a opção marcada (Nunca/Raramente/Às vezes/Frequentemente/Muito frequentemente ou escala numérica equivalente).\nInclua obrigatoriamente: dados de identificação, todos os 18 itens numerados com a resposta marcada, subtotais por subescala (Parte A — itens 1-6, Parte B — itens 7-18 se aplicável), pontuação total e qualquer classificação ou resultado final registrado.\n${base}`,
     CARS:        `Você está extraindo um protocolo CARS (Childhood Autism Rating Scale).\nExtraia a pontuação marcada em cada um dos 15 domínios (valores possíveis: 1, 1.5, 2, 2.5, 3, 3.5 ou 4).\nInclua obrigatoriamente: pontuação de cada domínio com sua descrição, total geral e qualquer observação clínica registrada.\n${base}`,
     TDE:         `Você está extraindo um protocolo TDE-2 (Teste de Desempenho Escolar).\nExtraia: número de acertos por subteste (escrita, leitura, aritmética), tipos de erro identificados (CFG/RC/IL/ENP), estratégias usadas (D/M/RV/A) e classificação por nível escolar.\nInclua todos os itens respondidos com o resultado de cada um.\n${base}`,
     LATERALIDADE: `Você está extraindo um protocolo de Avaliação de Lateralidade.\nExtraia o resultado para cada sistema avaliado: manual (destro/sinistro/misto), podal, visual e auditivo.\nInclua todas as tarefas realizadas e o resultado individual de cada uma.\n${base}`,
