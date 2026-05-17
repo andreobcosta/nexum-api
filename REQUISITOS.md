@@ -1,5 +1,5 @@
 # Nexum — Documento de Requisitos do Sistema
-**Versão:** 4.4  
+**Versão:** 4.5  
 **Data:** 17/05/2026  
 **Status:** Em evolução — SaaS Multidisciplinar
 
@@ -1434,18 +1434,22 @@ O Admin Sistema (Nexum) **nunca acessa dados de pacientes proativamente**. Acess
 | **Validação de entrada** | `validator` (backend) + `DOMPurify` (frontend) — sanitização de campos de texto livre antes de persistir e renderizar |
 | **Melhoria de imagem** | **`sharp`** (Node.js) — normalização de contraste, sharpen, grayscale, deskew; aplicado em background na avaliação de elegibilidade |
 
-### 18.2 Modelos Claude
+### 18.2 Modelos de IA por tarefa
 
-| Agente | Modelo | Motivo |
-|---|---|---|
-| **Avaliação de elegibilidade** | **claude-sonnet-4-20250514** | **Dual-purpose: check de elegibilidade + pré-extração reutilizada na geração (mais barato que Haiku + Sonnet separados)** |
-| Analítico | claude-sonnet-4-20250514 | Precisão clínica crítica — reutiliza `pre_extracted_content` sem re-extrair |
-| Redator | claude-sonnet-4-20250514 | Qualidade de redação + prompt caching |
-| Revisor | claude-sonnet-4-20250514 | Validações clínicas precisas |
-| Extração de padrões (curadoria) | claude-sonnet-4-20250514 | Qualidade na identificação — Haiku não tem precisão suficiente para evitar PII |
-| Extração de manual PDF | claude-sonnet-4-20250514 | Visão + precisão na extração de tabelas |
+> Ver seção 18.4 para a estratégia multi-provider completa.
 
-> **Nota:** O **Agente Compressor** (claude-haiku) foi descontinuado junto com a funcionalidade de transcrição de áudio. O **Haiku não é mais utilizado na plataforma** — todas as chamadas IA usam Sonnet.
+| Agente / Tarefa | Provider primário | Provider fallback | Motivo |
+|---|---|---|---|
+| **Avaliação de elegibilidade + pré-extração** | **Gemini 1.5 Flash** | Claude Sonnet | ~40× mais barato para extração de texto; qualidade equivalente |
+| Analítico | Claude Sonnet | GPT-4o | Raciocínio clínico estruturado + JSON preciso |
+| Redator | Claude Sonnet | GPT-4o | Melhor qualidade PT-BR em system prompt longo + prompt caching |
+| Revisor | Claude Sonnet | GPT-4o | Validações clínicas precisas (13 regras) |
+| Extração de padrões (curadoria) | Claude Sonnet | — | Precisão na identificação de PII — não usar modelo menor |
+| Extração de manual PDF | Claude Sonnet | GPT-4o | Visão + precisão na extração de tabelas |
+
+> **Nota:** O **Agente Compressor** (claude-haiku) foi descontinuado junto com a transcrição de áudio. O **Haiku não é mais utilizado** — pipeline de geração usa exclusivamente Sonnet.
+
+> **Estado atual (monousuário):** elegibilidade ainda usa Claude Sonnet — migração para Gemini Flash está no roadmap da Sprint IA Multi-Provider.
 
 ### 18.3 Collections Firestore — Schema definitivo (multi-tenant)
 
@@ -1495,6 +1499,56 @@ O Admin Sistema (Nexum) **nunca acessa dados de pacientes proativamente**. Acess
 | `notifications/{user_id}/{notif_id}` | Notificações por usuário (geração concluída, reprovada, instrumento aprovado) |
 
 **Nota de migração:** Durante a fase monousuário atual, as collections existentes (`patients`, `clinic_settings`, `report_layout`, `instrument_library` etc.) permanecem. A Sprint Multi-tenancy executa a migração para o schema definitivo acima.
+
+### 18.4 Estratégia Multi-Provider de IA
+
+**Princípio:** usar o modelo mais adequado por tarefa — não necessariamente um único provider — para otimizar custo, resiliência e qualidade simultaneamente. Nenhuma tarefa deve ter dependência exclusiva e irrecuperável de um único provider.
+
+#### Roteamento por tarefa
+
+| Tarefa | Provider primário | Provider fallback | Sensibilidade à qualidade |
+|---|---|---|---|
+| Extração de PDF/imagem (elegibilidade) | **Gemini 1.5 Flash** | Claude Sonnet | Média — extração de texto, sem raciocínio clínico |
+| Agente Analítico | **Claude Sonnet** | GPT-4o | Alta — estruturação clínica em JSON |
+| Agente Redator | **Claude Sonnet** | GPT-4o | Crítica — escrita clínica PT-BR com system prompt longo |
+| Agente Revisor | **Claude Sonnet** | GPT-4o | Alta — 13 regras clínicas precisas |
+| Extração de padrões (curadoria) | **Claude Sonnet** | — | Alta — detecção de PII; não usar modelo menor |
+
+#### Fallback automático (resiliência)
+
+- Provider primário retorna **429** (rate limit): aguarda retries configurados e tenta fallback
+- Provider primário retorna **503** (indisponibilidade): tenta fallback imediatamente, sem retries
+- Fallback registrado em `activity_log` com `provider_used`, `provider_primary`, `motivo_fallback`
+- Jobs executados em fallback são marcados com `provider_used ≠ provider_primary` para rastreabilidade no painel Admin Sistema
+- Custo de fallback (GPT-4o / Gemini) é interno da Nexum — não rastreável via Workspaces Anthropic; contabilizado separadamente
+
+#### Impacto em custo
+
+| Estratégia | Custo extração/arquivo | Custo geração/relatório |
+|---|---|---|
+| Atual (Claude Sonnet para tudo) | ~$0,020 | ~$0,247 |
+| Pós-Sprint Multi-Provider (Gemini Flash na extração) | ~**$0,0005** | ~$0,247 |
+
+Economia na extração: **~97%**. Em 50 clínicas com 8.000 arquivos/mês: **~$158/mês** (~R$930/mês) economizados.
+
+#### Restrições
+
+- Troca do Agente Redator de Claude → outro provider **requer re-validação clínica completa**: o Revisor é calibrado contra outputs do Claude; output de outro modelo pode falhar nas 13 regras mesmo sendo clinicamente correto
+- Prompts específicos por provider são versionados no Firestore junto com `motor_config`
+- Workspaces Anthropic por clínica não cobrem custos de GPT-4o ou Gemini — esses passam pela chave central da Nexum
+- BYOK por provider (Admin Clínica traz sua própria chave OpenAI/Gemini) é funcionalidade futura — não implementar antes da Sprint Multi-Provider
+
+#### Configuração no `motor_config`
+
+```json
+{
+  "ai_providers": {
+    "extraction": "gemini_flash",
+    "pipeline_primary": "claude_sonnet",
+    "pipeline_fallback": "gpt4o"
+  }
+}
+```
 
 ---
 
@@ -1592,6 +1646,10 @@ O sistema monitora continuamente todos os recursos e **alerta proativamente o Ad
 | `lgpd_consent_at` + `lgpd_consent_by` imutáveis no Firestore | Evidência e rastreabilidade do declarante; audit trail regulatório |
 | Soft delete + Cloud Function semanal para exclusão física | Reversibilidade em 90 dias; portabilidade garantida |
 | Supervisor: permissões configuráveis + restrições absolutas hardcoded | Flexibilidade sem brechas de segurança |
+| **Gemini Flash como provider primário de extração** | ~40× mais barato que Claude Sonnet para extração de texto de PDF/imagem; qualidade equivalente para essa tarefa específica; Claude Sonnet como fallback |
+| **Pipeline de geração: Claude Sonnet primário + GPT-4o fallback automático** | Resiliência contra indisponibilidade da Anthropic sem degradação perceptível; fallback só ativa após esgotamento dos retries |
+| **Troca do Agente Redator para outro provider requer re-validação clínica** | Output do Redator muda sutilmente entre providers → Revisor pode reprovar com padrões diferentes → nunca promover a primário sem validação com Patrízia |
+| **BYOK por provider é funcionalidade futura** | Admin Clínica poderá trazer sua própria chave OpenAI/Gemini; implementar apenas após Sprint Multi-Provider base estar estável |
 | Secretária: sem acesso a conteúdo clínico (relatórios, transcrições) | Separação entre função administrativa e responsabilidade clínica |
 | Paciente pertence à clínica — profissional é vinculado ao paciente | Continuidade de atendimento quando profissional sai da clínica |
 | Módulo de conselho profissional injetado no Redator e Revisor | Padronização clínica automática sem configuração pelo profissional |
@@ -1762,6 +1820,32 @@ Sprint G (Aprendizado Contínuo)
   - [ ] Checkbox desabilitado para inelegíveis na tela de seleção de geração
   - [ ] Notificação in-app para arquivos inelegíveis
   - [ ] Analítico usa `pre_extracted_content` quando disponível
+
+### Sprint IA Multi-Provider ⚡ (pode ser executada em paralelo com Templates)
+
+**Objetivo:** eliminar dependência exclusiva da Anthropic, reduzir custo de extração em ~97% e garantir continuidade operacional em caso de instabilidade de qualquer provider.
+
+**Fase 1 — Gemini Flash para extração (baixo risco clínico):**
+- [ ] Integração Google Generative AI SDK (`@google/generative-ai`) no backend
+- [ ] `GOOGLE_GEMINI_API_KEY` no Secret Manager
+- [ ] Substituir `extractTextFromFile` em `eligibility.js`: Gemini 1.5 Flash como primário, Claude Sonnet como fallback
+- [ ] Mesmo contrato de retorno `{ text, cost, quality }` — transparente para o restante do pipeline
+- [ ] Campo `provider_used` salvo por arquivo no Firestore (rastreabilidade)
+- [ ] Validação clínica obrigatória: comparar extrações Gemini vs Claude em 20 arquivos reais antes de ativar em produção
+
+**Fase 2 — GPT-4o como fallback do pipeline de geração (resiliência):**
+- [ ] Integração OpenAI SDK (`openai`) no backend
+- [ ] `OPENAI_API_KEY` no Secret Manager
+- [ ] Fallback automático em `claude.js`: após esgotamento de retries (429/503), tentar GPT-4o com mesmo prompt
+- [ ] Adapter de parâmetros Claude → OpenAI (system/user, max_tokens, etc.)
+- [ ] Campo `provider_used` salvo no job (rastreabilidade no `activity_log`)
+- [ ] Alerta Admin Sistema quando fallback é ativado
+
+**Fase 3 — Configuração e visibilidade (Admin Sistema):**
+- [ ] Campo `ai_providers` no `motor_config/global`: `{ extraction, pipeline_primary, pipeline_fallback }`
+- [ ] Interface Admin Sistema para configurar provider por tarefa
+- [ ] Painel de uso por provider: quantas gerações usaram fallback, custo por provider
+- [ ] Feature flag `multi_provider_enabled` para ativar/desativar por clínica
 
 ### Sprint Self-Service e Onboarding Automatizado
 
