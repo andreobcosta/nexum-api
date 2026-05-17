@@ -38,7 +38,7 @@ export default function PatientDetailPage() {
   const hasPendingWork = patient?.files &&
     Object.values(patient.files).flat().some(f =>
       f.status === 'transcribing' || f.status === 'pending_transcription' ||
-      f.eligibility_status === 'pending'
+      f.eligibility_status === 'pending' || (!f.transcription && !f.eligibility_status && f.file_type !== 'audio')
     );
 
   useEffect(() => {
@@ -167,12 +167,11 @@ export default function PatientDetailPage() {
         </span>
       );
     }
-    if (file.eligibility_status === 'pending') {
-      return (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--amber)' }}>
-          <Clock style={{ width: 11, height: 11 }} /> Avaliando...
-        </span>
-      );
+    if (file.transcription) {
+      return <span style={{ fontSize: 11, color: 'var(--green)' }}>✓ Transcrito</span>;
+    }
+    if (file.eligibility_status === 'eligible' || file.eligibility_status === 'enhanced_eligible') {
+      return <span style={{ fontSize: 11, color: 'var(--green)' }}>✅ Elegível</span>;
     }
     if (file.eligibility_status === 'ineligible') {
       return (
@@ -181,13 +180,11 @@ export default function PatientDetailPage() {
         </span>
       );
     }
-    if (file.eligibility_status === 'eligible' || file.eligibility_status === 'enhanced_eligible') {
-      return <span style={{ fontSize: 11, color: 'var(--green)' }}>✅ Elegível</span>;
-    }
-    if (file.transcription) {
-      return <span style={{ fontSize: 11, color: 'var(--green)' }}>✓ Transcrito</span>;
-    }
-    return <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{file.file_type || 'arquivo'}</span>;
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--amber)' }}>
+        <Clock style={{ width: 11, height: 11 }} /> Avaliando...
+      </span>
+    );
   }
 
   if (loading) {
