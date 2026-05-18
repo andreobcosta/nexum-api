@@ -95,16 +95,16 @@ Sem linter ou framework de testes configurado.
 | routes/reports.js | Geração + pipeline async + rota feedback (collection feedbacks) | Atualizado E1 |
 | routes/transcribe.js | Transcrição de áudio | OK |
 | routes/costs.js | Custos por RAN | OK |
-| routes/admin.js | 7 rotas admin — motor_config, system_prompts, system_prompts_history, activity_log | Novo Sprint 3 |
+| routes/admin.js | 8 rotas admin — motor_config, system_prompts, system_prompts_history, activity_log, reports-history | Atualizado Sprint 3 (18/05/2026) |
 | routes/settings.js | 2 rotas settings — report_layout por email | Novo Sprint 3 |
 | routes/drive-webhook.js | Notificações Drive | OK |
 | services/claude.js | Pipeline 3 agentes + timeout/retry + caching | Atualizado B1/B3/B4 |
 | services/drive.js | Drive: upload, export, update | OK |
 | services/drive-sync.js | Sync bidirecional webhooks Drive | Inativo sem APP_URL |
-| services/pdf-extractor.js | Extração PDF/imagem/DOCX + score legibilidade | Atualizado C1+C3+C4 |
+| services/pdf-extractor.js | Extração PDF/imagem/DOCX + score legibilidade + prompt auto-adaptativo + detecção Torre de Hanói | Atualizado C1+C3+C4 + Sprint 3 (18/05/2026) |
 | services/transcription.js | STT Chirp 2 + Compressor | Atualizado B5 |
 | services/docx-generator.js | Gera DOCX — carregarLayout() do Firestore + fallback Arial/11pt | Atualizado E5+E6 |
-| prompts/system_prompt_ran.md | System prompt RAN — LOCK PERMANENTE | Nunca alterar ética/não-diagnóstico |
+| prompts/system_prompt_ran.md | System prompt RAN — LOCK PERMANENTE | Seções 2.4 e 7 atualizadas para múltiplas aplicações por instrumento (18/05/2026) |
 
 ### Frontend (`frontend/src/`)
 
@@ -118,7 +118,7 @@ Sem linter ou framework de testes configurado.
 | pages/NewPatientPage.jsx | Formulário novo paciente | OK |
 | pages/EditPatientPage.jsx | Edição de paciente | OK |
 | pages/UploadPage.jsx | Upload de arquivos | OK |
-| pages/AdminPage.jsx | Painel admin — system prompt + histórico + rollback + motor config + activity log | Novo Sprint 3 |
+| pages/AdminPage.jsx | Painel admin — system prompt + histórico + rollback + motor config + activity log + histórico RANs (aba 📊 RANs) | Atualizado Sprint 3 (18/05/2026) |
 | pages/SettingsPage.jsx | Layout do relatório — fonte, tamanho, cabeçalho, logo_url | Novo Sprint 3 |
 
 ---
@@ -321,8 +321,8 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] Carregar nexum_biblioteca_clinica_neuropsi.json no Firestore (seed rodado em 27/04/2026)
 
 ### Sprint 3 — Novas Funcionalidades (pendente)
-- [x] Admin backend ✓: routes/admin.js — 7 rotas (motor_config, system_prompts, system_prompts_history, activity_log) (6b6db68)
-- [x] Admin frontend ✓: AdminPage — system prompt + histórico + rollback + motor config + activity log (6e7e65d)
+- [x] Admin backend ✓: routes/admin.js — 8 rotas (motor_config, system_prompts, system_prompts_history, activity_log, reports-history) (6b6db68 + b9faf0c)
+- [x] Admin frontend ✓: AdminPage — system prompt + histórico + rollback + motor config + activity log + aba "📊 RANs" com histórico de geração (6e7e65d + f642fc7)
 - [x] Settings backend ✓: routes/settings.js — 2 rotas (report_layout por email) (6b6db68)
 - [x] Settings frontend ✓: SettingsPage — fonte, tamanho, cabeçalho, logo_url (6e7e65d)
 - [x] B5 ✓: Compressor (substitui Identificador — spec abaixo)
@@ -334,6 +334,10 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] P3 ~~DESCONTINUADO~~ (18/05/2026): feedback passivo + revisão em lote — banner + painel before/after descontinuados com a edição inline
 - [x] P1 ~~DESCONTINUADO~~ (18/05/2026): editor Quill WYSIWYG — descontinuado, não usar Quill
 - [x] P2 ~~DESCONTINUADO~~ (18/05/2026): botão "+ Adicionar seção" — descontinuado com edição inline
+- [x] C2b ✓: pdf-extractor.js prompt auto-adaptativo genérico para qualquer instrumento — ETAPA 1 auto-identificação + ETAPA 2 extração estruturada (b1d7e71)
+- [x] C2c ✓: pdf-extractor.js detecção e prompt específico para Torre de Hanói — alertas de confusão de dígitos manuscritos (33c83f1)
+- [x] SP1 ✓: system_prompt_ran.md seções 2.4 e 7 — regra obrigatória de sub-seções separadas por sessão quando instrumento aplicado múltiplas vezes (d6e9806)
+- [x] SP2 ✓: routes/admin.js GET /reports-history — collectionGroup sem orderBy + sort em memória + batch fetch nomes de pacientes (f642fc7 + b9faf0c)
 
 ### Sprint H — Infraestrutura Crítica (PRÓXIMA — antes de novas features)
 - [ ] H3: Migrar autenticação Drive de OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) para Google Service Account com Domain-Wide Delegation — elimina risco de expiração e indisponibilidade total
@@ -465,6 +469,10 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | Revisor penaliza -15pts se RAN não abre com `#` | campo `alertas` recebe `'abertura_invalida'` — score_zero não dispara, apenas penaliza |
 | PDF bold inline: split regex + `{continued:true}` alternando fontes | não usar `replace(/\*\*/g,'')` simples — perde bold; implementado em parágrafos e listas do pdfkit |
 | `GOOGLE_REFRESH_TOKEN` expira a cada 6 meses de inatividade | solução definitiva é Service Account (H3) — não usar OAuth2 pessoal em novo código Drive |
+| `collectionGroup('reports')` sem `orderBy` — ordenação feita em memória | `orderBy` em collectionGroup requer índice Firestore não criado automaticamente; sort JS por `generated_at` string ISO é equivalente |
+| Extrator genérico auto-adaptativo: ETAPA 1 (auto-identificação) + ETAPA 2 (extração estruturada) | Prompt específico por instrumento não escala para multiprofissionais; Claude identifica instrumento/área pelo conteúdo visual antes de extrair |
+| `detectarInstrumento()` reconhece "hanoi"/"hanói"/"torre" → `TORRE_HANOI` | Torre de Hanói tem dígitos manuscritos com alta taxa de confusão ("3"↔"8", "1"↔"7") — prompt específico previne alucinação de valores |
+| Redator DEVE criar sub-seções `##### Sessão N — [data]` para múltiplas aplicações do mesmo instrumento | system_prompt_ran.md seções 2.4 + 7: proibido mesclar dados de sessões distintas ou criar valores compostos — cada sessão tem seu próprio bloco |
 
 ### Bugs Corrigidos — Não Reintroduzir
 
@@ -475,6 +483,9 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | Revisor retornava `aprovado: true` no bloco `catch` | Corrigido para `aprovado: false` — B3 |
 | Prompt caching desativado no Redator | Reativado com `cache_control: ephemeral` — B4 |
 | Geração de RAN bloqueava a resposta HTTP até concluir | Refatorado para async com `setImmediate` + job_id — E1 |
+| `collectionGroup('reports').orderBy(...)` lançava erro de índice ausente | Removido `orderBy` da query; ordenação feita em memória — b9faf0c |
+| Extrator genérico sem instrução de leitura dígito-a-dígito alucinava valores Torre de Hanói | Adicionado prompt específico TORRE_HANOI + alertas de confusão de dígitos manuscritos — 33c83f1 |
+| Redator mesclava dados de múltiplas sessões do mesmo instrumento em bloco único | system_prompt_ran.md exige sub-seções `##### Sessão N` obrigatórias — d6e9806 |
 
 ### O que NÃO Existe (não inventar)
 
@@ -563,3 +574,5 @@ Tempo estimado: 5 minutos.
 - [ ] Acessar Admin via Settings → Administração do sistema
 - [ ] Aba Prompt carrega system prompt ativo (não vazia — executar seed via Docker se necessário)
 - [ ] Aba Log carrega activity log
+- [ ] Aba "📊 RANs" carrega histórico de relatórios gerados com data, versão e score
+- [ ] Botão "Ver" na aba RANs navega para o relatório correto
