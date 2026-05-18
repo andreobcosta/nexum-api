@@ -45,6 +45,7 @@ function detectarInstrumento(nomeArquivo) {
   if (nome.includes('tde')) return 'TDE';
   if (nome.includes('lateralidade')) return 'LATERALIDADE';
   if (nome.includes('fonologica') || nome.includes('fonológica')) return 'FONOLOGICA';
+  if (nome.includes('hanoi') || nome.includes('hanói') || nome.includes('torre')) return 'TORRE_HANOI';
   return null;
 }
 
@@ -57,7 +58,34 @@ function promptPorInstrumento(tipo) {
     CARS:        `Você está extraindo um protocolo CARS (Childhood Autism Rating Scale).\nExtraia a pontuação marcada em cada um dos 15 domínios (valores possíveis: 1, 1.5, 2, 2.5, 3, 3.5 ou 4).\nInclua obrigatoriamente: pontuação de cada domínio com sua descrição, total geral e qualquer observação clínica registrada.\n${base}`,
     TDE:         `Você está extraindo um protocolo TDE-2 (Teste de Desempenho Escolar).\nExtraia: número de acertos por subteste (escrita, leitura, aritmética), tipos de erro identificados (CFG/RC/IL/ENP), estratégias usadas (D/M/RV/A) e classificação por nível escolar.\nInclua todos os itens respondidos com o resultado de cada um.\n${base}`,
     LATERALIDADE: `Você está extraindo um protocolo de Avaliação de Lateralidade.\nExtraia o resultado para cada sistema avaliado: manual (destro/sinistro/misto), podal, visual e auditivo.\nInclua todas as tarefas realizadas e o resultado individual de cada uma.\n${base}`,
-    FONOLOGICA:  `Você está extraindo um protocolo de Avaliação de Consciência Fonológica.\nExtraia o desempenho por nível (A a H), incluindo número de acertos, erros e classificação em cada nível.\nPreserve todos os itens testados e as respostas registradas.\n${base}`
+    FONOLOGICA:  `Você está extraindo um protocolo de Avaliação de Consciência Fonológica.\nExtraia o desempenho por nível (A a H), incluindo número de acertos, erros e classificação em cada nível.\nPreserve todos os itens testados e as respostas registradas.\n${base}`,
+    TORRE_HANOI: `Você está extraindo uma ficha da Torre de Hanói (pode ser Ficha de Aplicação, Ficha de Observação, ou ambas na mesma imagem).
+
+ATENÇÃO CRÍTICA A NÚMEROS MANUSCRITOS: Este documento contém valores numéricos escritos à mão que são clinicamente essenciais e devem ser lidos com máxima precisão. Confusões comuns em escrita manual que você deve evitar:
+- "3" pode se parecer com "8" — verifique com atenção a curvatura
+- "5" pode se parecer com "6" ou "9"
+- "1" pode se parecer com "7"
+- "0" pode se parecer com "6"
+Se houver qualquer dúvida sobre um dígito, sinalize: [VALOR DUVIDOSO — verificar documento original]
+
+FICHA DE APLICAÇÃO — extraia obrigatoriamente:
+1. Identificação: nome do avaliado, idade, data (formato DD/MM/AAAA), aplicador
+2. Número de discos usados: verifique qual checkbox está marcado (□3 □4 □5 □6) — informe APENAS o número marcado, nunca assuma
+3. Tentativas realizadas: transcreva exatamente o que está escrito (pode ser "não observado" ou um número)
+4. Tempo total gasto: leia DÍGITO POR DÍGITO o campo "X min Y seg" — reporte como "X min Y seg". Não arredonde nem estime.
+5. Número de movimentos realizados: leia o número exato escrito no campo
+6. Número de movimentos mínimos esperados: leia o número exato escrito no campo
+7. Erros cometidos: transcreva o texto manuscrito literal
+8. Estratégia observada: identifique qual checkbox está marcado (Tentativa e erro / Planejamento antecipado / Mista / Abandono da tarefa)
+9. Observações do aplicador: transcreva o texto manuscrito literal, item por item
+
+FICHA DE OBSERVAÇÃO — extraia obrigatoriamente:
+1. Identificação: nome do avaliado, idade, data, aplicador
+2. Para cada categoria (Atenção e Concentração, Organização e Planejamento, Memória de Trabalho, Comportamento Emocional, Estratégias Utilizadas): liste TODOS os itens e indique quais estão marcados com [X] e quais estão em branco [ ]
+3. Observações adicionais manuscritas: transcreva literalmente, mesmo que parcialmente ilegível
+4. Anotações manuscritas ao lado dos itens (ex.: notas entre parênteses, comentários): inclua todas
+
+${base}`
   };
   return prompts[tipo] || null;
 }
@@ -79,7 +107,9 @@ Regras de extração:
 - Para tabelas: reproduza a estrutura em formato de texto legível
 - Para campos manuscritos: transcreva o que conseguir ler, sinalize com [ILEGÍVEL] o que não conseguir
 - Para protocolos com escala Likert ou múltipla escolha: identifique qual opção foi marcada em cada item
-- Preserve números, datas e valores exatamente como aparecem
+- Para checkboxes: indique APENAS os que estão marcados — nunca assuma que um checkbox está marcado sem evidência visual clara
+- Preserve números, datas e valores exatamente como aparecem — nunca arredonde, estime ou interpole valores numéricos
+- Para números manuscritos ambíguos (ex.: "3" que pode parecer "8", "5" que pode parecer "6"): sinalize com [VALOR DUVIDOSO — verificar documento original] em vez de escolher um valor
 - Se o documento estiver em branco ou vazio, informe: [DOCUMENTO SEM CONTEÚDO RELEVANTE]
 - Organize o conteúdo de forma lógica, mantendo a hierarquia do documento original
 
