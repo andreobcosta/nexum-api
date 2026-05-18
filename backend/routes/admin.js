@@ -97,6 +97,32 @@ router.post('/system-prompt/rollback/:versao', async (req, res) => {
   }
 });
 
+// POST /api/admin/cleanup-stuck-jobs
+router.post('/cleanup-stuck-jobs', async (req, res) => {
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const snap = await db.collection('jobs').where('status', '==', 'processando').get();
+    if (snap.empty) return res.json({ message: 'Nenhum job travado encontrado', cleaned: 0 });
+
+    const patientIds = new Set();
+    const batch = db.batch();
+    snap.forEach(doc => {
+      batch.update(doc.ref, { status: 'erro', erro: 'Limpeza manual pelo admin', finished_at: now });
+      const pid = doc.data().patient_id;
+      if (pid) patientIds.add(pid);
+    });
+    for (const pid of patientIds) {
+      batch.update(db.collection('patients').doc(pid), { pipeline_ativo: false, pipeline_iniciado_em: null, updated_at: now });
+    }
+    await batch.commit();
+    await logActivity(db, 'cleanup_stuck_jobs', req.user.email, JSON.stringify({ cleaned: snap.size, patients: [...patientIds] }));
+    res.json({ message: `${snap.size} job(s) limpo(s)`, cleaned: snap.size, patients: [...patientIds] });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro na limpeza', details: err.message });
+  }
+});
+
 // GET /api/admin/activity-log
 router.get('/activity-log', async (req, res) => {
   try {

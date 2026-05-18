@@ -1300,7 +1300,7 @@ function AdminPage({onBack}){
   const[rollingBack,setRollingBack]=useState(null);
   const[configJson,setConfigJson]=useState('');
   const[savingConfig,setSavingConfig]=useState(false);
-  const[actLog,setActLog]=useState(null);
+  const[actLog,setActLog]=useState(null);const[cleaningJobs,setCleaningJobs]=useState(false);
 
   useEffect(()=>{
     if(tab==='prompt'&&!promptData){apiFetch('/admin/system-prompt').then(d=>{setPromptData(d);setEditPrompt(d.conteudo||'');}).catch(e=>setToast({message:e.message,type:'error'}));}
@@ -1338,6 +1338,7 @@ function AdminPage({onBack}){
     finally{setRollingBack(null);}
   };
 
+  const cleanupJobs=async()=>{if(!confirm('Limpar todos os jobs travados e desbloquear pipelines ativos?'))return;setCleaningJobs(true);try{const r=await apiFetch('/admin/cleanup-stuck-jobs',{method:'POST'});setToast({message:r.message,type:'success'});setActLog(null);}catch(e){setToast({message:e.message,type:'error'});}finally{setCleaningJobs(false);}};
   const saveConfig=async()=>{
     setSavingConfig(true);
     try{
@@ -1385,10 +1386,13 @@ function AdminPage({onBack}){
         )}
 
         {tab==='log'&&(
-          !actLog?<Spinner text="Carregando log..."/>:
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          <Btn onClick={cleanupJobs} loading={cleaningJobs} variant="danger" full small>🔧 Limpar jobs travados</Btn>
+          {!actLog?<Spinner text="Carregando log..."/>:
           actLog.length===0?<div style={{textAlign:'center',padding:40,color:V.ink3}}><div style={{fontSize:32,marginBottom:8}}>📋</div>Nenhuma entrada no log</div>:
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             {actLog.map(e=>(<div key={e.id} style={{background:V.white,borderRadius:12,padding:'10px 14px',border:'1px solid '+V.sand2}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:V.ink,fontFamily:'monospace'}}>{e.action}</div><div style={{fontSize:11,color:V.ink3,marginTop:3}}>{e.admin}</div></div><div style={{fontSize:10,color:V.ink4,flexShrink:0,textAlign:'right'}}>{new Date(e.created_at).toLocaleString('pt-BR')}</div></div></div>))}
+          </div>}
           </div>
         )}
 
