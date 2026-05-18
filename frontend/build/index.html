@@ -225,36 +225,35 @@ function Confirm({title,message,onConfirm,onCancel,danger}){
 }
 
 /* ── PIPELINE PROGRESS ── */
-function PipelineProgress({stage,message}){
-  const stages=[
+function PipelineProgress({stage,message,tipo,elapsed}){
+  const isUpdate=tipo==='update';
+  const stages=isUpdate?[
+    {key:'extracao',label:'Extração',icon:'📄',desc:'Lendo documentos'},
+    {key:'diff',label:'Diff',icon:'🔍',desc:'Identificando mudanças'},
+    {key:'redator',label:'Redator',icon:'✍️',desc:'Integrando dados'},
+    {key:'revisor',label:'Revisor',icon:'✅',desc:'Validando qualidade'}
+  ]:[
     {key:'analitico',label:'Analítico',icon:'🔬',desc:'Lendo e cruzando dados'},
-    {key:'redator',label:'Redator',icon:'✍️',desc:'Redigindo 12 seções'},
+    {key:'redator',label:'Redator',icon:'✍️',desc:'Redigindo seções'},
     {key:'revisor',label:'Revisor',icon:'✅',desc:'Validando qualidade'}
   ];
   const idx=stages.findIndex(s=>s.key===stage);
+  const pct=idx<0?5:Math.round(((idx+1)/stages.length)*100);
+  const fmtElapsed=e=>e<60?e+'s':Math.floor(e/60)+'m '+(e%60)+'s';
   return(
     <div style={{background:V.white,borderRadius:20,padding:24,border:'1px solid '+V.sand2,boxShadow:'0 4px 20px rgba(0,0,0,0.08)'}}>
-      <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:600,color:V.forest,marginBottom:4,textAlign:'center'}}>Gerando Relatório</div>
-      <div style={{fontSize:12,color:V.ink3,textAlign:'center',marginBottom:24}}>{message||'Iniciando pipeline...'}</div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:4}}>
+        <div style={{fontFamily:"'Fraunces',serif",fontSize:16,fontWeight:600,color:V.forest}}>{isUpdate?'Atualizando RAN':'Gerando Relatório'}</div>
+        {elapsed>0&&<div style={{fontSize:11,color:V.ink4,background:V.sand,borderRadius:20,padding:'2px 8px'}}>+{fmtElapsed(elapsed)}</div>}
+      </div>
+      <div style={{fontSize:12,color:V.ink3,textAlign:'center',marginBottom:20}}>{message||'Iniciando...'}</div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:0,marginBottom:20}}>
-        {stages.map((s,i)=>{
-          const active=s.key===stage;
-          const done=idx>i;
-          return <React.Fragment key={s.key}>
-            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}>
-              <div style={{width:48,height:48,borderRadius:'50%',background:done?V.green:active?V.forest:'transparent',border:'2px solid '+(done||active?'transparent':V.sand3),display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,animation:active?'agentPulse 1.5s ease-in-out infinite':'none',transition:'all .4s',boxShadow:active?'0 0 0 6px '+V.sage:'none'}}>
-                {done?'✓':s.icon}
-              </div>
-              <div style={{fontSize:11,fontWeight:done||active?600:400,color:done?V.green:active?V.forest:V.ink4,transition:'color .3s'}}>{s.label}</div>
-              <div style={{fontSize:10,color:V.ink4,textAlign:'center',maxWidth:70}}>{s.desc}</div>
-            </div>
-            {i<stages.length-1&&<div style={{height:2,flex:'0 0 24px',background:done?V.green:V.sand3,marginBottom:28,transition:'background .4s'}}/>}
-          </React.Fragment>
-        })}
+        {stages.map((s,i)=>{const active=s.key===stage;const done=idx>i;return <React.Fragment key={s.key}><div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}><div style={{width:44,height:44,borderRadius:'50%',background:done?V.green:active?V.forest:'transparent',border:'2px solid '+(done||active?'transparent':V.sand3),display:'flex',alignItems:'center',justifyContent:'center',fontSize:active?22:18,animation:active?'agentPulse 1.5s ease-in-out infinite':'none',transition:'all .4s',boxShadow:active?'0 0 0 6px '+V.sage:'none'}}>{done?'✓':s.icon}</div><div style={{fontSize:11,fontWeight:done||active?600:400,color:done?V.green:active?V.forest:V.ink4,transition:'color .3s'}}>{s.label}</div><div style={{fontSize:10,color:active?V.forest:V.ink4,textAlign:'center',maxWidth:72,fontWeight:active?600:400}}>{s.desc}</div></div>{i<stages.length-1&&<div style={{height:2,flex:'0 0 20px',background:done?V.green:V.sand3,marginBottom:28,transition:'background .4s'}}/>}</React.Fragment>})}
       </div>
-      <div style={{height:4,background:V.sand2,borderRadius:2,overflow:'hidden'}}>
-        <div style={{height:'100%',background:V.forest,borderRadius:2,width:idx<0?'5%':idx===0?'35%':idx===1?'70%':'100%',transition:'width .8s ease'}}/>
+      <div style={{height:5,background:V.sand2,borderRadius:3,overflow:'hidden'}}>
+        <div style={{height:'100%',background:V.forest,borderRadius:3,width:pct+'%',transition:'width 1s ease'}}/>
       </div>
+      <div style={{display:'flex',justifyContent:'flex-end',marginTop:4}}><span style={{fontSize:11,color:V.ink4,fontWeight:600}}>{pct}%</span></div>
     </div>
   )
 }
@@ -529,7 +528,7 @@ function FileItem({f,patientId,onDeleted,onCategoryChanged,onError,onPreviewFile
 /* ── PAGE: PATIENT DETAIL ── */
 function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPreviewFile}){
   const[patient,setPatient]=useState(null);const[loading,setLoading]=useState(true);
-  const[generating,setGenerating]=useState(false);const[pipelineStage,setPipelineStage]=useState(null);const[pipelineMsg,setPipelineMsg]=useState('');
+  const[generating,setGenerating]=useState(false);const[pipelineStage,setPipelineStage]=useState(null);const[pipelineMsg,setPipelineMsg]=useState('');const[pipelineTipo,setPipelineTipo]=useState('generate');const[pipelineElapsed,setPipelineElapsed]=useState(0);useEffect(()=>{if(!generating){setPipelineElapsed(0);return;}const t=setInterval(()=>setPipelineElapsed(e=>e+1),1000);return()=>clearInterval(t);},[generating]);
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[confirmDel,setConfirmDel]=useState(null);
   const[expandedCat,setExpandedCat]=useState(null);
   const[showAtualizarMenu,setShowAtualizarMenu]=useState(false);const[legadoPulados,setLegadoPulados]=useState([]);
@@ -549,27 +548,24 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
   useEffect(()=>{load()},[load]);
   useEffect(()=>{const allFiles=[].concat(...Object.values((patient&&patient.files)||{}));const tenMin=10*60*1000;const hasPending=allFiles.some(f=>f.eligibility_status==='pending'&&(Date.now()-new Date(f.created_at).getTime())<tenMin);if(!hasPending)return;const t=setInterval(loadSilent,4000);return()=>clearInterval(t);},[patient,loadSilent]);
 
-  const runPipeline=async(endpoint,successMsg)=>{
-    setGenerating(true);setPipelineStage('analitico');setPipelineMsg('Iniciando...');
-    const SMAP={'Agente Analítico — extraindo dados clínicos':'analitico','Agente Redator — redigindo relatório':'redator','Agente Revisor — validando qualidade':'revisor'};
+  const runPipeline=async(endpoint,successMsg,tipo)=>{
+    const t=tipo||'generate';
+    setPipelineTipo(t);
+    setGenerating(true);setPipelineStage(t==='update'?'extracao':'analitico');setPipelineMsg('Iniciando...');
+    const SMAP_GEN={'Agente Analítico — extraindo dados clínicos':'analitico','Agente Redator — redigindo relatório':'redator','Agente Revisor — validando qualidade':'revisor'};
+    const SMAP_UPD={'Extraindo conteúdo dos documentos':'extracao','Agente Diff — identificando mudanças':'diff','Agente Redator — integrando novos dados':'redator','Agente Revisor — validando qualidade':'revisor'};
+    const SMAP=t==='update'?SMAP_UPD:SMAP_GEN;
     try{
       const r=await apiFetch(endpoint,{method:'POST',body:JSON.stringify({force:true})});
       if(!r.job_id){setPipelineStage('done');setToast({message:successMsg(r),type:'success'});setTimeout(()=>load(),1000);return;}
-      const job=await new Promise((resolve,reject)=>{let n=0;const t=setInterval(async()=>{if(++n>600){clearInterval(t);reject(new Error('Timeout: geração excedeu 30 minutos'));return;}try{const j=await apiFetch('/reports/job/'+r.job_id);const s=SMAP[j.etapa];if(s){setPipelineStage(s);setPipelineMsg(j.etapa);}if(j.status==='concluido'){clearInterval(t);resolve(j);return;}if(j.status==='erro'){clearInterval(t);reject(new Error(j.erro||'Erro na geração'));return;}}catch(pe){console.warn('[poll]',pe.message);}},3000);});
+      const job=await new Promise((resolve,reject)=>{let n=0;const poll=setInterval(async()=>{if(++n>600){clearInterval(poll);reject(new Error('Timeout: geração excedeu 30 minutos'));return;}try{const j=await apiFetch('/reports/job/'+r.job_id);const s=SMAP[j.etapa];if(s){setPipelineStage(s);setPipelineMsg(j.etapa);}if(j.status==='concluido'){clearInterval(poll);resolve(j);return;}if(j.status==='erro'){clearInterval(poll);reject(new Error(j.erro||'Erro na geração'));return;}}catch(pe){console.warn('[poll]',pe.message);}},3000);});
       setPipelineStage('done');setToast({message:(job.tipo==='update'?'RAN atualizado!':'RAN gerado!')+' Score: '+(job.score_qualidade||'—')+'/100',type:'success'});if(job.arquivos_pulados&&job.arquivos_pulados.length>0)setLegadoPulados(job.arquivos_pulados);setTimeout(()=>load(),1000);
     }catch(e){setToast({message:e.message,type:'error'});}
-    finally{setGenerating(false);setPipelineStage(null);}
+    finally{setGenerating(false);setPipelineStage(null);setPipelineTipo('generate');}
   };
 
-  const generateRAN=()=>runPipeline(
-    '/reports/generate/'+patientId,
-    r=>'RAN gerado! Score: '+(r.score_qualidade||'—')+'/100'+(r.custo_usd?' · $'+r.custo_usd.toFixed(3)+' USD':'')
-  );
-
-  const updateRAN=(reportId)=>runPipeline(
-    '/reports/update/'+patientId+'/'+reportId,
-    r=>'RAN v'+r.version+' atualizado! '+r.novos_documentos+' novo(s) doc(s).'+(r.custo_usd?' · $'+r.custo_usd.toFixed(3)+' USD':'')
-  );
+  const generateRAN=()=>runPipeline('/reports/generate/'+patientId,r=>'RAN gerado! Score: '+(r.score_qualidade||'—')+'/100','generate');
+  const updateRAN=(reportId)=>runPipeline('/reports/update/'+patientId+'/'+reportId,r=>'RAN atualizado! '+(r.novos_documentos||0)+' novo(s) doc(s).','update');
 
   const importarRAN=()=>importRanRef.current?.click();
 
@@ -611,16 +607,7 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
 
         {generating?(
           <div style={{marginBottom:16}}>
-            <PipelineProgress stage={pipelineStage} message={pipelineMsg}/>
-            <div style={{background:V.white,borderRadius:10,padding:'10px 16px',border:'1px solid '+V.sand2,marginTop:8}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                <span style={{fontSize:12,color:V.ink3}}>{pipelineMsg||'Iniciando...'}</span>
-                <span style={{fontSize:12,fontWeight:600,color:V.forest}}>{pipelineStage==='analitico'?'35%':pipelineStage==='redator'?'70%':pipelineStage==='revisor'?'90%':pipelineStage==='done'?'100%':'5%'}</span>
-              </div>
-              <div style={{height:4,background:V.sand2,borderRadius:2,overflow:'hidden'}}>
-                <div style={{height:'100%',background:V.forest,borderRadius:2,transition:'width 1s ease',width:pipelineStage==='analitico'?'35%':pipelineStage==='redator'?'70%':pipelineStage==='revisor'?'90%':pipelineStage==='done'?'100%':'5%'}}/>
-              </div>
-            </div>
+            <PipelineProgress stage={pipelineStage} message={pipelineMsg} tipo={pipelineTipo} elapsed={pipelineElapsed}/>
           </div>
         ):(
           <div style={{marginBottom:16}}>
