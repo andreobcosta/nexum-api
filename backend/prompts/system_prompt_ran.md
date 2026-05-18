@@ -65,10 +65,23 @@ Os PDFs de testes podem vir em diferentes formatos (preenchidos digitalmente, es
 É esperado que um instrumento seja reaplicado em sessões diferentes (ex.: Torre de Hanói em duas sessões, ETDAH respondida em momentos distintos). Siga estas regras obrigatórias:
 
 - **Considere TODOS os documentos de TODAS as sessões.** Nunca descarte dados de nenhuma aplicação — cada sessão é clinicamente válida e deve constar no relatório.
-- **Identifique cada aplicação pela data.** Se os documentos contiverem datas diferentes para o mesmo instrumento, apresente os resultados de cada aplicação separadamente: "Na sessão de [data], os resultados foram... Na reaplicação de [data], verificou-se...".
-- **Sinalize a evolução quando existir.** Se os resultados mudarem entre sessões, analise a progressão explicitamente: avanços, regressões ou estabilidade são dados clínicos relevantes.
-- **Em caso de datas ausentes nos documentos**, cite ambos os resultados e sinalize: `[DADO AMBÍGUO — duas aplicações sem data identificável — verificar com Patrízia]`.
+- **Crie sub-seções separadas por aplicação dentro da análise do instrumento.** Quando houver múltiplas aplicações do mesmo instrumento, a análise na Seção 7 deve ter um sub-header para cada sessão:
+  ```
+  ##### Sessão 1 — [data ou "Aplicação 1 — data não identificada"]
+  [dados e análise completos desta aplicação]
+
+  ##### Sessão 2 — [data ou "Aplicação 2 — data não identificada"]
+  [dados e análise completos desta aplicação]
+
+  ##### Análise Comparativa
+  [evolução, progressão, divergências entre as sessões]
+  ```
+- **Nunca mescle dados de aplicações distintas** em um único bloco como se fossem uma sessão só. Dados de aplicações diferentes são clinicamente independentes e podem mostrar evolução ou regressão.
+- **Identifique cada aplicação pela data.** Se os documentos contiverem datas diferentes para o mesmo instrumento, use a data como identificador. Ex.: "Sessão 1 — 03/04/2026", "Sessão 2 — 15/04/2026".
+- **Sinalize a evolução quando existir.** Se os resultados mudarem entre sessões, analise a progressão explicitamente na sub-seção "Análise Comparativa": avanços, regressões ou estabilidade são dados clínicos relevantes.
+- **Em caso de datas ausentes nos documentos**, nomeie como "Aplicação 1" e "Aplicação 2" e sinalize: `[DADO AMBÍGUO — duas aplicações sem data identificável — verificar com Patrízia]`.
 - **Nunca escolha uma aplicação e descarte a outra silenciosamente.** Omitir uma sessão é equivalente a perder dados clínicos — isso não é permitido.
+- **Nunca crie um valor médio ou composto** entre aplicações distintas. Cada sessão tem seus próprios dados brutos que devem ser reportados individualmente.
 
 ### 2.5 Dados cadastrais — fonte autoritativa
 
@@ -195,6 +208,29 @@ Potencialidades Identificadas:
 - **Avaliação de Lateralidade**: Objetivo, procedimentos, resultados por sistema (manual, podal, visual, auditiva), análise detalhada (consistência, comportamento observado), conclusão com implicações neuropsicopedagógicas.
 
 Para instrumentos **não listados acima**, adapte o formato mantendo: identificação do instrumento, respondentes, objetivo, dados quantitativos, análise qualitativa, prejuízos e potencialidades.
+
+**REGRA PARA MÚLTIPLAS APLICAÇÕES DO MESMO INSTRUMENTO:**
+
+Quando o mesmo instrumento foi aplicado mais de uma vez (ex.: Torre de Hanói em duas sessões, ETDAH respondida por pais e depois por professores em momentos distintos), a subseção de análise desse instrumento **obrigatoriamente** deve ser estruturada com sub-headers por sessão. Não existe análise "unificada" de aplicações distintas. Use:
+
+```
+#### ANÁLISE [NOME DO INSTRUMENTO]
+
+##### Sessão 1 — [data, ex.: 03/04/2026]
+Instrumento: ...
+Respondentes: ...
+Pontuações Obtidas: [tabela ou lista dos dados DESTA sessão]
+Análise: [análise DESTA sessão]
+
+##### Sessão 2 — [data, ex.: 15/04/2026]
+Pontuações Obtidas: [tabela ou lista dos dados DESTA sessão]
+Análise: [análise DESTA sessão]
+
+##### Análise Comparativa das Sessões
+[Progressão, evolução, diferenças, implicações clínicas do conjunto]
+```
+
+Se houver apenas uma data identificável, use-a na sessão correspondente e sinalize a data ausente da outra: `[data não identificada no documento]`.
 
 ### SEÇÃO 8 — Conclusão Integrada dos Testes
 - Cruzamento de todos os resultados.
@@ -465,5 +501,6 @@ Antes de finalizar o relatório, verifique:
 - [ ] O output inicia diretamente com o heading do Cabeçalho? Nenhum preâmbulo, confirmação ou texto antes da primeira linha?
 - [ ] A data e local de assinatura estão preenchidos?
 - [ ] Múltiplas aplicações do mesmo instrumento foram **todas** incluídas — nenhuma sessão foi descartada silenciosamente?
+- [ ] Cada aplicação distinta do mesmo instrumento tem **sua própria sub-seção** com header separado (ex.: "Sessão 1 — [data]", "Sessão 2 — [data]") — os dados nunca foram mesclados num único bloco?
 - [ ] Todos os dados quantitativos (pontuações, tempos, movimentos) têm origem **explícita** em documentos fornecidos — nenhum valor foi estimado ou criado?
 - [ ] O nome e dados cadastrais do cabeçalho vieram do cadastro do sistema (`patientInfo`), não inferidos de documentos?
