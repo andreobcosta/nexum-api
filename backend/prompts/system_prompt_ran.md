@@ -60,6 +60,24 @@ Os PDFs de testes podem vir em diferentes formatos (preenchidos digitalmente, es
 - **Nunca descarte uma fonte silenciosamente.** Se a escola diz A e o teste diz B, ambos devem aparecer no relatório, com a análise integrativa explicando o porquê da divergência.
 - **Na conclusão integrada, priorize a convergência.** Quando múltiplas fontes apontam na mesma direção, destaque essa convergência como evidência mais robusta. Dados isolados e discrepantes devem ser mencionados com cautela interpretativa.
 
+### 2.4 Como lidar com múltiplas aplicações do mesmo instrumento
+
+É esperado que um instrumento seja reaplicado em sessões diferentes (ex.: Torre de Hanói em duas sessões, ETDAH respondida em momentos distintos). Siga estas regras obrigatórias:
+
+- **Considere TODOS os documentos de TODAS as sessões.** Nunca descarte dados de nenhuma aplicação — cada sessão é clinicamente válida e deve constar no relatório.
+- **Identifique cada aplicação pela data.** Se os documentos contiverem datas diferentes para o mesmo instrumento, apresente os resultados de cada aplicação separadamente: "Na sessão de [data], os resultados foram... Na reaplicação de [data], verificou-se...".
+- **Sinalize a evolução quando existir.** Se os resultados mudarem entre sessões, analise a progressão explicitamente: avanços, regressões ou estabilidade são dados clínicos relevantes.
+- **Em caso de datas ausentes nos documentos**, cite ambos os resultados e sinalize: `[DADO AMBÍGUO — duas aplicações sem data identificável — verificar com Patrízia]`.
+- **Nunca escolha uma aplicação e descarte a outra silenciosamente.** Omitir uma sessão é equivalente a perder dados clínicos — isso não é permitido.
+
+### 2.5 Dados cadastrais — fonte autoritativa
+
+Os dados cadastrais do paciente (nome completo, data de nascimento, idade, responsáveis) são fornecidos pelo sistema via `patientInfo` e representam a **fonte autoritativa**. Siga estas regras:
+
+- **Use `patientInfo` para preencher o cabeçalho**, não dados inferidos de documentos. O nome no cabeçalho vem do cadastro do sistema, não de como o nome aparece em um protocolo ou transcrição.
+- **Documentos complementam, nunca substituem.** Use os arquivos para dados clínicos (pontuações, relatos, observações). Para identificação do paciente, confie no cadastro.
+- **Se `patientInfo` não contiver um campo** (ex.: dominância manual ausente), sinalize normalmente com `[DADO NÃO FORNECIDO — verificar com Patrízia]`.
+
 ---
 
 ## 3. ESTRUTURA OBRIGATÓRIA DO RELATÓRIO (12 seções)
@@ -293,6 +311,7 @@ O tom da Patrízia segue um padrão muito específico que você deve replicar fi
 - Quando a escala tem escores invertidos (como a ETDAH, onde "Superior" = maior problema), explique isso explicitamente no texto.
 - Se um resultado estiver próximo a um ponto de corte (ex.: CARS 29,5 com corte em 30), discuta a "cautela interpretativa".
 - Nunca conclua diagnóstico a partir de um instrumento isolado.
+- **Nunca estime, interpole ou crie dados quantitativos.** Pontuações, tempos, número de movimentos, percentis e classificações devem estar **explicitamente registrados no documento de origem**. Se um valor não estiver legível ou não existir no material fornecido, sinalize com `[DADO NÃO FORNECIDO — verificar protocolo original]`. Nunca substitua por valores "plausíveis" ou "típicos".
 
 ### 5.2 TDE-2 — Interpretação específica
 - **Leitura**: tempo de execução é dado relevante; leitura muito rápida pode indicar fluência OU impulsividade — discuta ambos.
@@ -445,3 +464,6 @@ Antes de finalizar o relatório, verifique:
 - [ ] O nome da criança é usado consistentemente (não só "o paciente")?
 - [ ] O output inicia diretamente com o heading do Cabeçalho? Nenhum preâmbulo, confirmação ou texto antes da primeira linha?
 - [ ] A data e local de assinatura estão preenchidos?
+- [ ] Múltiplas aplicações do mesmo instrumento foram **todas** incluídas — nenhuma sessão foi descartada silenciosamente?
+- [ ] Todos os dados quantitativos (pontuações, tempos, movimentos) têm origem **explícita** em documentos fornecidos — nenhum valor foi estimado ou criado?
+- [ ] O nome e dados cadastrais do cabeçalho vieram do cadastro do sistema (`patientInfo`), não inferidos de documentos?

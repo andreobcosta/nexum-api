@@ -9,7 +9,6 @@
 <link rel="manifest" href="/manifest.json"/>
 <title>Nexum — Gestão Clínica</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet"/>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{font-size:clamp(13px,1.1vw,17px);height:100%}
@@ -90,7 +89,6 @@ input,select,textarea,button{font-family:inherit;-webkit-appearance:none}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
 <script type="text/babel">
 const{useState,useEffect,useCallback,useRef,useMemo}=React;
 const API='/api';
@@ -802,30 +800,21 @@ function CapturePage({patientId,initialCat,onBack,onDone}){
   )
 }
 
-function applyMdInline(t){return t.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>');}
-function parseMarkdownToHtml(md){if(!md)return'';const lines=md.split('\n');const out=[];let inUl=false;for(const line of lines){if(/^- .+/.test(line)){if(!inUl){out.push('<ul>');inUl=true;}out.push('<li>'+applyMdInline(line.slice(2))+'</li>');continue;}if(inUl){out.push('</ul>');inUl=false;}if(/^#### .+/.test(line)){out.push('<h4>'+applyMdInline(line.slice(5))+'</h4>');continue;}if(/^### .+/.test(line)){out.push('<h3>'+applyMdInline(line.slice(4))+'</h3>');continue;}if(/^## .+/.test(line)){out.push('<h2>'+applyMdInline(line.slice(3))+'</h2>');continue;}if(/^# .+/.test(line)){out.push('<h1>'+applyMdInline(line.slice(2))+'</h1>');continue;}if(!line.trim()){out.push('<p><br/></p>');continue;}out.push('<p>'+applyMdInline(line)+'</p>');}if(inUl)out.push('</ul>');return out.join('');}
-function parseHtmlToMarkdown(html){if(!html)return'';let md=html;md=md.replace(/<h1[^>]*>(.*?)<\/h1>/gi,'# $1\n');md=md.replace(/<h2[^>]*>(.*?)<\/h2>/gi,'## $1\n');md=md.replace(/<h3[^>]*>(.*?)<\/h3>/gi,'### $1\n');md=md.replace(/<h4[^>]*>(.*?)<\/h4>/gi,'#### $1\n');md=md.replace(/<li[^>]*>(.*?)<\/li>/gi,'- $1\n');md=md.replace(/<\/?[uo]l[^>]*>/gi,'');md=md.replace(/<strong[^>]*>(.*?)<\/strong>/gi,'**$1**');md=md.replace(/<b[^>]*>(.*?)<\/b>/gi,'**$1**');md=md.replace(/<em[^>]*>(.*?)<\/em>/gi,'*$1*');md=md.replace(/<i[^>]*>(.*?)<\/i>/gi,'*$1*');md=md.replace(/<u[^>]*>(.*?)<\/u>/gi,'$1');md=md.replace(/<p[^>]*><br\/?><\/p>/gi,'\n');md=md.replace(/<p[^>]*>(.*?)<\/p>/gi,'$1\n');md=md.replace(/<br\/?>/gi,'\n');md=md.replace(/<[^>]+>/g,'');md=md.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ');md=md.replace(/\n{3,}/g,'\n\n');return md.trim()+'\n';}
-
 /* ── PAGE: REPORT VIEW ── */
-
-
-/* ── PAGE: REPORT VIEW ── */
-function parseBlocks(md){if(!md)return[];const lines=md.split('\n');const blocks=[];let cur=null;let idx=0;for(let i=0;i<lines.length;i++){if(/^#{1,4}\s+.+/.test(lines[i])){if(cur!==null)blocks.push({id:'b'+(idx++),content:cur,feedback:null});cur=lines[i]+'\n';}else{if(cur!==null)cur+=lines[i]+'\n';else if(lines[i].trim()){cur=lines[i]+'\n';}}}if(cur)blocks.push({id:'b'+(idx++),content:cur,feedback:null});return blocks;}
 function ReportViewPage({reportId,patientId,onBack}){
   const[rpt,setRpt]=useState(null);const[loading,setLoading]=useState(true);
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};const[showDownloadMenu,setShowDownloadMenu]=useState(false);
-  const[blocos,setBlocos]=useState(null);
-  const[feedbacks,setFeedbacks]=useState({});const[patient,setPatient]=useState(null);
+  const[patient,setPatient]=useState(null);
   const[zoom,setZoom]=useState(100);const adjZoom=d=>setZoom(z=>Math.max(70,Math.min(200,z+d)));
 
-  useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);const md=r.content_md||'';const marcadores=[/^#+\s*QUEIXA PRINCIPAL/im,/^QUEIXA PRINCIPAL/im];let corpo=md;for(const m of marcadores){const i=md.search(m);if(i!==-1){corpo=md.slice(i);break;}}setBlocos(parseBlocks(corpo));}).catch(console.error).finally(()=>setLoading(false));apiFetch('/reports/'+patientId+'/'+reportId+'/feedback').then(setFeedbacks).catch(()=>{});apiFetch('/patients/'+patientId).then(setPatient).catch(()=>{});},[reportId,patientId]);
+  useEffect(()=>{apiFetch('/reports/'+patientId+'/'+reportId).then(r=>{setRpt(r);}).catch(console.error).finally(()=>setLoading(false));apiFetch('/patients/'+patientId).then(setPatient).catch(()=>{});},[reportId,patientId]);
 
   const isGoogleDoc=rpt?.drive_is_google_doc;
   const hasDriveFile=!!rpt?.drive_file_id;
 
-  const sendFeedback=async(bId,bHeading,bContent,fType)=>{const prev=feedbacks[bId];setFeedbacks(f=>({...f,[bId]:fType}));try{await apiFetch('/reports/'+patientId+'/'+reportId+'/feedback',{method:'POST',body:JSON.stringify({bloco_id:bId,bloco_heading:bHeading,feedback_type:fType,bloco_content:bContent})});}catch(e){setFeedbacks(f=>({...f,[bId]:prev}));setToast({message:'Erro ao salvar feedback: '+e.message,type:'error'});setTimeout(()=>setToast(null),3000);}};
-
   const baixar=async(tipo)=>{setShowDownloadMenu(false);try{const token=localStorage.getItem('nexum_token');const res=await fetch('/api/reports/'+patientId+'/'+reportId+'/'+tipo,{headers:{Authorization:'Bearer '+token}});if(!res.ok)throw new Error('HTTP '+res.status);const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='RAN_v'+rpt.version+'.'+tipo;a.click();URL.revokeObjectURL(url);}catch(e){setToast({message:'Erro ao baixar: '+e.message,type:'error'});}};
+
+  const[previewing,setPreviewing]=useState(false);const previewPdf=async()=>{if(previewing)return;setPreviewing(true);setToast({message:'Gerando prévia PDF...',type:'info'});try{const token=localStorage.getItem('nexum_token');const res=await fetch('/api/reports/'+patientId+'/'+reportId+'/pdf',{headers:{Authorization:'Bearer '+token}});if(!res.ok)throw new Error('HTTP '+res.status);const blob=await res.blob();const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){setToast({message:'Erro na prévia: '+e.message,type:'error'});}finally{setPreviewing(false);}};
 
   if(loading)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Relatório" onBack={onBack}/><Spinner text="Carregando relatório..."/></div>;
   if(!rpt)return <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}><Header title="Não encontrado" onBack={onBack}/></div>;
@@ -837,6 +826,8 @@ function ReportViewPage({reportId,patientId,onBack}){
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
       <Header title={'RAN v'+rpt.version} subtitle="Ficha do paciente" onBack={onBack} right={
         <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          {/* Botão Prévia PDF */}
+          <button onClick={previewPdf} disabled={previewing} title="Pré-visualizar RAN como PDF" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:previewing?'wait':'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4,opacity:previewing?0.6:1}}>{previewing?'⏳':'👁'} Prévia</button>
           {/* Botão Baixar com dropdown */}
           <div style={{position:'relative'}}>
             <button onClick={()=>setShowDownloadMenu(m=>!m)} title="Baixar arquivo" style={{background:'rgba(255,255,255,0.15)',border:'none',color:'rgba(255,255,255,0.9)',padding:'6px 12px',borderRadius:10,cursor:'pointer',fontSize:12,fontWeight:600,fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>⬇ Baixar</button>
@@ -869,7 +860,7 @@ function ReportViewPage({reportId,patientId,onBack}){
           </div>
         </div>}
 
-          {(blocos&&blocos.length>0)?(<div style={{padding:'0 4px'}}>{blocos.map(b=>(<div key={b.id} style={{marginBottom:16,paddingBottom:16,borderBottom:'1px solid '+V.sand2}}><Markdown content={b.content}/></div>))}</div>):(<Markdown content={rpt.content_md||''}/>)}
+          <Markdown content={rpt.content_md||''}/>
       </div>
       <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
     </div>

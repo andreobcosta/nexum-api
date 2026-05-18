@@ -92,7 +92,7 @@ Sem linter ou framework de testes configurado.
 | routes/auth.js | Google OAuth2 callback — gera JWT 30d, redireciona para hash | Corrigido A2 |
 | routes/patients.js | CRUD pacientes + contadores desnormalizados | Atualizado D4 |
 | routes/files.js | Upload/listagem + incremento de contadores | Atualizado D4 |
-| routes/reports.js | Geração + pipeline async + rotas feedback bloco | Atualizado E1+E3 |
+| routes/reports.js | Geração + pipeline async + rota feedback (collection feedbacks) | Atualizado E1 |
 | routes/transcribe.js | Transcrição de áudio | OK |
 | routes/costs.js | Custos por RAN | OK |
 | routes/admin.js | 7 rotas admin — motor_config, system_prompts, system_prompts_history, activity_log | Novo Sprint 3 |
@@ -114,7 +114,7 @@ Sem linter ou framework de testes configurado.
 | utils/api.js | Funções fetch com Authorization header | Atualizado A4 |
 | pages/PatientsPage.jsx | Lista de pacientes | OK |
 | pages/PatientDetailPage.jsx | Detalhe + geração de RAN + polling job_id | Atualizado E1 |
-| pages/ReportPage.jsx | Visualização + edição inline por bloco + feedback ✓✗✎ | Atualizado E2+E3 |
+| pages/ReportPage.jsx | Visualização do RAN — download DOCX/PDF + preview PDF | Atualizado — edição inline descontinuada 18/05/2026 |
 | pages/NewPatientPage.jsx | Formulário novo paciente | OK |
 | pages/EditPatientPage.jsx | Edição de paciente | OK |
 | pages/UploadPage.jsx | Upload de arquivos | OK |
@@ -326,14 +326,14 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] Settings backend ✓: routes/settings.js — 2 rotas (report_layout por email) (6b6db68)
 - [x] Settings frontend ✓: SettingsPage — fonte, tamanho, cabeçalho, logo_url (6e7e65d)
 - [x] B5 ✓: Compressor (substitui Identificador — spec abaixo)
-- [x] E2 ✓: edição inline por bloco — parseBlocks + textarea por bloco + PATCH content_md (1fc11e7)
-- [x] E3 ✓: feedback por bloco — botões ✓✗✎ + borderLeft colorido + collection feedbacks (1fc11e7)
+- [x] E2 ~~DESCONTINUADO~~ (18/05/2026): edição inline por bloco — substituída por edição direta no Google Drive / Google Docs
+- [x] E3 ~~DESCONTINUADO~~ (18/05/2026): feedback por bloco inline — collection feedbacks mantida, mas UI de bloco removida
 - [x] E5 ✓: docx-generator.js carregarLayout() do Firestore — fonte, tamanho, cabecalho, logo_url
 - [x] P4a ✓: download PDF/DOCX corrigido — fetch com Authorization header + blob download
 - [x] P4b ✓: botão Voltar corrigido — fallback para list quando patientId ausente
-- [x] P3 ✓: feedback passivo + revisão em lote — banner + painel before/after + /feedback/batch (533855c)
-- [x] P1 ✓: editor Quill WYSIWYG — parseMarkdownToHtml/parseHtmlToMarkdown (9821c6e)
-- [x] P2 ✓: botão "+ Adicionar seção" — id Date.now(), abre em edição imediato (9821c6e)
+- [x] P3 ~~DESCONTINUADO~~ (18/05/2026): feedback passivo + revisão em lote — banner + painel before/after descontinuados com a edição inline
+- [x] P1 ~~DESCONTINUADO~~ (18/05/2026): editor Quill WYSIWYG — descontinuado, não usar Quill
+- [x] P2 ~~DESCONTINUADO~~ (18/05/2026): botão "+ Adicionar seção" — descontinuado com edição inline
 
 ### Sprint H — Infraestrutura Crítica (PRÓXIMA — antes de novas features)
 - [ ] H3: Migrar autenticação Drive de OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) para Google Service Account com Domain-Wide Delegation — elimina risco de expiração e indisponibilidade total
@@ -367,59 +367,21 @@ Formato: lista de strings com transcrição literal — sem paráfrase, sem norm
 
 ---
 
-## Spec P3 — Feedback Passivo + Revisão em Lote
+## ~~Spec P3 — Feedback Passivo + Revisão em Lote~~ (DESCONTINUADO em 18/05/2026)
 
-### Fluxo
-- Ao salvar um bloco: NÃO exibe dialog — marca bloco como ✎ automaticamente e salva `texto_original` + `texto_editado` em estado local
-- Banner discreto no topo do relatório: "X blocos editados — Revisar feedbacks"
-- Botão "Revisar feedbacks" abre painel inline (não modal global) mostrando cada bloco editado com before/after lado a lado
-- Opções por bloco no painel: ✓ Estava quase certo / ✗ Estava errado / Pular
-- Ao concluir: POST em lote para `/api/reports/:patient_id/:report_id/feedback/batch` com diff real (`texto_original` + `texto_editado` + `feedback_type`)
-
-### Estado necessário (frontend)
-- `blocosEditados`: Map de `bloco_id` → `{ texto_original, texto_editado }`
-- Capturar `texto_original` no momento do clique em **Editar** — não após a edição
-
-### Backend
-- POST `/feedback` já existente aceita um feedback por vez
-- Criar `POST /feedback/batch` em `reports.js` — aceita array de feedbacks e salva cada um na collection `feedbacks`
-
-### Decisão arquitetural
-- Feedback é sempre voluntário — nunca interrompe o fluxo de edição
-- O diff (`texto_original` vs `texto_editado`) é a "sugestão" implícita para o Motor de Feedback da Sprint 4
+> **DESCONTINUADO** — Edição inline foi removida. Edição de RANs é feita diretamente no Google Drive / Google Docs. Não reimplementar esta spec.
 
 ---
 
-## Spec P1 — Editor WYSIWYG Quill
+## ~~Spec P1 — Editor WYSIWYG Quill~~ (DESCONTINUADO em 18/05/2026)
 
-**Biblioteca:** Quill 1.3.7 via CDN
-- CSS: `https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css`
-- JS: `https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js`
-
-**Toolbar mínima:** bold, italic, underline, list (bullet + ordered), header (H2, H3)
-
-**Output:** HTML via `quill.root.innerHTML`
-
-**Integração:** substituir textarea do editor de bloco por div Quill
-
-**Conversão ao carregar:** Markdown → HTML simples via `parseMarkdownToHtml()` local (apenas `**bold**`, `*italic*`, `# headers`, `- listas`)
-
-**Conversão ao salvar:** HTML → Markdown via `parseHtmlToMarkdown()` local — `content_md` continua sendo a fonte de verdade no backend
-
-### Decisão arquitetural
-- `content_md` continua sendo a fonte de verdade — Quill é só UI
-- Conversão Markdown↔HTML é local, sem dependência de biblioteca extra
-- Quill inicializado via `useRef` + `useEffect` após montagem do componente
+> **DESCONTINUADO** — Quill WYSIWYG foi removido junto com a edição inline. Não usar Quill (nem TipTap, ProseMirror ou similar) no frontend.
 
 ---
 
-## Spec P2 — Inserir Nova Seção no RAN
+## ~~Spec P2 — Inserir Nova Seção no RAN~~ (DESCONTINUADO em 18/05/2026)
 
-- Botão "+ Adicionar seção" no final da lista de blocos
-- Clique cria e abre bloco novo no modo edição imediatamente
-- Heading padrão: `## Nova Seção` (editável pelo usuário no Quill)
-- Ao salvar: adiciona bloco ao array `blocos` + faz PATCH `content_md`
-- ID do novo bloco: `'b' + Date.now()` para garantir unicidade
+> **DESCONTINUADO** — Inserção de nova seção dependia da edição inline. Adição de seções é feita diretamente no Google Docs.
 
 ---
 
@@ -443,11 +405,13 @@ Formato: lista de strings com transcrição literal — sem paráfrase, sem norm
 
 ## Princípio do Feedback como Validador Contínuo
 
-O feedback inline da Patrízia (✓ ✗ ✎) ao revisar cada RAN é o validador contínuo de todas as evoluções marcadas como `~`.
+O julgamento clínico da Patrízia ao revisar cada RAN gerado é o validador contínuo de todas as evoluções marcadas como `~`. A validação se dá na prática — ao usar o relatório, identificar erros ou omissões.
+
+> **Nota:** O mecanismo de feedback inline por bloco (✓ ✗ ✎) foi descontinuado em 18/05/2026. O princípio continua válido — a validação ocorre via uso clínico real, mas sem coleta automatizada de feedback por bloco.
 
 **Critério de estabilidade de um item `~`:**
-- Taxa de ✗ e ✎ nos blocos afetados NÃO aumenta após a mudança → estável
-- Taxa AUMENTA → reverter e investigar
+- Patrízia não reporta regressões nos blocos afetados → estável
+- Regressão reportada → reverter e investigar
 
 Itens `~` não precisam de teste manual antes de ir para produção. A validação acontece com julgamento clínico real.
 
@@ -479,10 +443,8 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | Relatórios salvos como Google Docs nativos no Drive | Permite edição direta no Drive sem conversão |
 | Firestore é o banco ativo — SQLite é legado | Migração feita — nunca usar SQLite |
 | `dotenv.config()` sempre com path explícito `/app/backend/.env` | Sem path explícito falha em volumes Docker montados |
-| `parseBlocks(md)` divide markdown por headings `(/^#{1,4}\s+.+/)` | E2: bloco = heading + conteúdo até o próximo heading |
-| Feedback por bloco usa `add()` (histórico) não `set()` | E3: feedbacks são imutáveis — GET retorna último por bloco via comparação ISO |
+| **Edição inline descontinuada** (Quill, parseBlocks, P1/P2/P3, botões ✓✗✎) | 18/05/2026: edição de RANs ocorre diretamente no Google Drive / Google Docs — não reimplementar no frontend |
 | Block renderer inteiro em UMA linha no index.html | Babel standalone quebra silenciosamente com JSX multilinha em qualquer posição |
-| Cores de feedback: `V.green` (ok), `V.red` (erro), `V.amber` (ajuste) | E3: usar sempre constantes V — nunca hex literals |
 | Rota `#settings` → SettingsPage; `#admin` → AdminPage no App Router | Sprint 3: rotas hash — ⚙️ no header da PatientListPage, sem BottomNav |
 | Navegação admin via Settings: `onAdmin` prop; admin → settings via `onBack` | Admin não tem ícone próprio na nav — acessível apenas por Settings |
 | `report_layout` usa `doc(req.user.email)` como doc ID | JWT contém apenas `email`, `name`, `picture` — sem campo `id` |
@@ -493,18 +455,10 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | `gerarDocx` usa `_fonte`/`_tamanho` como estado de módulo (module-level mutable) | Monousuário — sem risco de corrida; `gerarDocxDeHtml` herda o estado da última geração (dívida técnica para multi-tenant na Fase 4) |
 | `gerarDocx(contentMd, nomeArquivo, userEmail)` — `userEmail` é o terceiro parâmetro opcional | Chamadas existentes sem o terceiro arg continuam válidas — fallback para defaults Arial/11pt |
 | Títulos de seção e tabela de identificação mantêm Arial hardcoded em E5 | Elementos estruturais de identidade visual; fonte configurável aplica-se apenas ao corpo do texto (processarInline + itemLista) |
-| Quill 1.3.7 via cdnjs — único editor WYSIWYG aprovado | Não usar TipTap, ProseMirror ou outros — CDN não garantido |
-| `content_md` é fonte de verdade — Quill é só UI de edição | Salvar sempre em Markdown via `parseHtmlToMarkdown()` |
-| Feedback nunca interrompe edição — sempre passivo | P3: dialog ao salvar foi descartado — ver spec P3 |
-| `blocosEditados` captura `texto_original` no clique Editar | Capturar ANTES da edição, não após |
-| `POST /feedback/batch` aceita array — salva `texto_original` + `texto_editado` na collection feedbacks | P3: campos novos retrocompatíveis — `add()` não afeta feedbacks anteriores |
-| `enviarFeedbacks` filtra apenas `ok` e `erro` — `pular` ignorado | Não enviar "pular" ao backend; limpar `blocosEditados` e `feedbacksRevisao` após envio bem-sucedido |
+| `content_md` é a fonte de verdade no backend — Firestore + Drive | ReportPage exibe o conteúdo; edição é no Google Docs |
 | `detectarInstrumento()` verifica `etdah` antes de `tde` | Evita falso positivo se nome do arquivo contiver ambas as strings |
 | `promptPorInstrumento()` retorna `null` para tipo desconhecido | `extractTextFromFile` usa `|| promptGenérico` como fallback — detecção nunca quebra extração |
 | Toast auto-dismiss | sempre `setTimeout(()=>setToast(null),3000)` após `setToast` de sucesso/erro — nunca toast persistente |
-| Botões de ação no bloco | apenas ícone + `title` tooltip — nunca ícone + texto junto (`✏️ Editar` foi removido em B8) |
-| `blocosEditados[id]===undefined` significa bloco novo | objeto com `texto_editado:null` = bloco existente aberto para edição — checar `===undefined`, não `?.texto_editado===null` |
-| Ícones ✓ ✗ ✎ removidos do header do bloco | feedback exclusivamente via painel P3 — `sendFeedback` e state `feedbacks` permanecem para uso interno do painel |
 | PDF via pdfkit: margens ABNT 85pt/57pt, corpo 12pt, lineGap 6pt | não alterar sem aprovação explícita — fallback ativo para relatórios sem Google Doc no Drive |
 | Drive export falha silenciosamente → pdfkit fallback | catch loga `[PDF] Falha Drive export` — erro real visível via Cloud Run logs |
 | `system_prompt_ran.md` tem REGRA DE OUTPUT no início da seção 3 | Redator deve iniciar output diretamente com `# RAN...` — nunca adicionar texto, saudação ou preâmbulo antes da Seção 1 |
@@ -524,6 +478,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 
 ### O que NÃO Existe (não inventar)
 
+- **Sem edição inline de RAN** — DESCONTINUADO em 18/05/2026. Não reimplementar: Quill, parseBlocks para edição, botões ✓✗✎ por bloco, banner de edições, painel P3, PATCH content_md, `/feedback/batch`. Edição é feita diretamente no Google Drive / Google Docs.
 - **Sem Motor de Feedback / Vector Search** — Sprint 4, não implementado
 - **Sem `feedback_queue`** — collection para Sprint 4, ainda não criada
 - **Sem SSE** — progresso de geração usa polling HTTP via collection `jobs`
@@ -593,17 +548,12 @@ Tempo estimado: 5 minutos.
 - [ ] RAN gerado aparece na lista de relatórios
 
 ### ReportPage
-- [ ] Abrir um RAN → blocos renderizam corretamente
-- [ ] Editar um bloco → toolbar Quill aparece UMA vez
-- [ ] Salvar bloco → toast "Bloco salvo"
-- [ ] Botão 🗑 remove bloco com confirmação
+- [ ] Abrir um RAN → conteúdo renderiza corretamente
 - [ ] Botão Voltar retorna para detalhe do paciente
 - [ ] Download DOCX → arquivo baixa sem erro
 - [ ] Download PDF → arquivo baixa sem erro
 - [ ] PDF exportado tem margens e espaçamento corretos (ABNT)
-- [ ] Botões ✓ ✗ ✎ funcionam por bloco
-- [ ] Banner "X blocos editados" aparece após salvar
-- [ ] Painel de revisão abre e envia feedbacks
+- [ ] Preview PDF → abre em nova aba sem erro
 
 ### Settings
 - [ ] Acessar Configurações via ⚙️
