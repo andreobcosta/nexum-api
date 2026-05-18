@@ -1338,7 +1338,7 @@ function AdminPage({onBack}){
     finally{setRollingBack(null);}
   };
 
-  const cleanupJobs=async()=>{if(!confirm('Limpar todos os jobs travados e desbloquear pipelines ativos?'))return;setCleaningJobs(true);try{const r=await apiFetch('/admin/cleanup-stuck-jobs',{method:'POST'});setToast({message:r.message,type:'success'});setActLog(null);}catch(e){setToast({message:e.message,type:'error'});}finally{setCleaningJobs(false);}};
+  const cleanupJobs=async()=>{if(!confirm('Limpar todos os jobs travados e desbloquear pipelines ativos?'))return;setCleaningJobs(true);try{const r=await apiFetch('/admin/cleanup-stuck-jobs',{method:'POST'});setToast({message:r.message,type:'success'});const log=await apiFetch('/admin/activity-log');setActLog(log);}catch(e){setToast({message:e.message,type:'error'});}finally{setCleaningJobs(false);}};
   const saveConfig=async()=>{
     setSavingConfig(true);
     try{
