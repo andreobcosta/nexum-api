@@ -339,8 +339,8 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] SP1 ✓: system_prompt_ran.md seções 2.4 e 7 — regra obrigatória de sub-seções separadas por sessão quando instrumento aplicado múltiplas vezes (d6e9806)
 - [x] SP2 ✓: routes/admin.js GET /reports-history — collectionGroup sem orderBy + sort em memória + batch fetch nomes de pacientes (f642fc7 + b9faf0c)
 
-### Sprint H — Infraestrutura Crítica (PRÓXIMA — antes de novas features)
-- [ ] H3: Migrar autenticação Drive de OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) para Google Service Account com Domain-Wide Delegation — elimina risco de expiração e indisponibilidade total
+### Sprint H — Infraestrutura Crítica ✅
+- [x] H3 ✓: Migrar autenticação Drive de OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) para Google Service Account — elimina risco de expiração e indisponibilidade total (2b4dba7)
 
 ### Sprint 4 — Aprendizado Contínuo (após Sprint 3 com feedbacks acumulados)
 - [ ] G1-G5 ~: Firestore Vector Search + Motor de Feedback Haiku + RAG + Busca Externa
@@ -468,7 +468,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | `system_prompt_ran.md` tem REGRA DE OUTPUT no início da seção 3 | Redator deve iniciar output diretamente com `# RAN...` — nunca adicionar texto, saudação ou preâmbulo antes da Seção 1 |
 | Revisor penaliza -15pts se RAN não abre com `#` | campo `alertas` recebe `'abertura_invalida'` — score_zero não dispara, apenas penaliza |
 | PDF bold inline: split regex + `{continued:true}` alternando fontes | não usar `replace(/\*\*/g,'')` simples — perde bold; implementado em parágrafos e listas do pdfkit |
-| `GOOGLE_REFRESH_TOKEN` expira a cada 6 meses de inatividade | solução definitiva é Service Account (H3) — não usar OAuth2 pessoal em novo código Drive |
+| Drive usa Google Service Account (não OAuth2 pessoal) | H3 concluído (2b4dba7) — GOOGLE_REFRESH_TOKEN removido; nunca reverter para OAuth2 pessoal |
 | `collectionGroup('reports')` sem `orderBy` — ordenação feita em memória | `orderBy` em collectionGroup requer índice Firestore não criado automaticamente; sort JS por `generated_at` string ISO é equivalente |
 | Extrator genérico auto-adaptativo: ETAPA 1 (auto-identificação) + ETAPA 2 (extração estruturada) | Prompt específico por instrumento não escala para multiprofissionais; Claude identifica instrumento/área pelo conteúdo visual antes de extrair |
 | `detectarInstrumento()` reconhece "hanoi"/"hanói"/"torre" → `TORRE_HANOI` | Torre de Hanói tem dígitos manuscritos com alta taxa de confusão ("3"↔"8", "1"↔"7") — prompt específico previne alucinação de valores |
@@ -496,7 +496,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 - **Sem testes automatizados** — validação por uso clínico real (Princípio do Feedback)
 - **Sem ambiente de staging** — apenas produção (Cloud Run) e local (`docker-compose`)
 - **`gerarDocxDeHtml` multi-tenant** — dívida técnica: usa `_fonte`/`_tamanho` da última geração via estado de módulo; precisa de refactor para Fase 4 (multi-tenant)
-- **H3 — Service Account pendente** — CRÍTICO: OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) expira e causa indisponibilidade total do Drive. Migrar para Google Service Account com Domain-Wide Delegation ou compartilhamento direto da pasta raiz. Prioridade: próxima sprint antes de qualquer nova feature.
+- ~~**H3 — Service Account pendente**~~ — **CONCLUÍDO** (2b4dba7): Drive migrado para Google Service Account — risco de expiração eliminado.
 
 ---
 
