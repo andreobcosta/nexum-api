@@ -854,8 +854,8 @@ function ReportViewPage({reportId,patientId,onBack}){
           <span>{isGoogleDoc?'🔄':'⚠'}</span>
           <div>
             {isGoogleDoc
-              ?<span>Edições no <strong>Google Docs</strong> são sincronizadas automaticamente. Última sincronização: {rpt.last_synced_at?new Date(rpt.last_synced_at).toLocaleString('pt-BR'):'na geração'}</span>
-              :<span>Este relatório está no Drive como arquivo <strong>.md</strong>. Clique em <strong>Editar</strong> para convertê-lo em Google Doc e habilitar edição completa.</span>
+              ?<span>Relatório salvo no <strong>Google Drive</strong>. Para editar: baixe o DOCX, edite no Word ou LibreOffice e reimporte o arquivo.</span>
+              :<span>Relatório disponível para download. Para editar: baixe o DOCX, edite no Word ou LibreOffice e reimporte o arquivo.</span>
             }
           </div>
         </div>}

@@ -326,7 +326,7 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 - [x] Settings backend ✓: routes/settings.js — 2 rotas (report_layout por email) (6b6db68)
 - [x] Settings frontend ✓: SettingsPage — fonte, tamanho, cabeçalho, logo_url (6e7e65d)
 - [x] B5 ✓: Compressor (substitui Identificador — spec abaixo)
-- [x] E2 ~~DESCONTINUADO~~ (18/05/2026): edição inline por bloco — substituída por edição direta no Google Drive / Google Docs
+- [x] E2 ~~DESCONTINUADO~~ (18/05/2026): edição inline por bloco — substituída por download → edição externa → reimport
 - [x] E3 ~~DESCONTINUADO~~ (18/05/2026): feedback por bloco inline — collection feedbacks mantida, mas UI de bloco removida
 - [x] E5 ✓: docx-generator.js carregarLayout() do Firestore — fonte, tamanho, cabecalho, logo_url
 - [x] P4a ✓: download PDF/DOCX corrigido — fetch com Authorization header + blob download
@@ -369,7 +369,7 @@ Formato: lista de strings com transcrição literal — sem paráfrase, sem norm
 
 ## ~~Spec P3 — Feedback Passivo + Revisão em Lote~~ (DESCONTINUADO em 18/05/2026)
 
-> **DESCONTINUADO** — Edição inline foi removida. Edição de RANs é feita diretamente no Google Drive / Google Docs. Não reimplementar esta spec.
+> **DESCONTINUADO** — Edição inline foi removida. Fluxo de edição: baixar DOCX → editar em qualquer editor de texto → reimportar o arquivo editado. Não reimplementar esta spec.
 
 ---
 
@@ -381,7 +381,7 @@ Formato: lista de strings com transcrição literal — sem paráfrase, sem norm
 
 ## ~~Spec P2 — Inserir Nova Seção no RAN~~ (DESCONTINUADO em 18/05/2026)
 
-> **DESCONTINUADO** — Inserção de nova seção dependia da edição inline. Adição de seções é feita diretamente no Google Docs.
+> **DESCONTINUADO** — Inserção de nova seção dependia da edição inline. Adição de seções é feita no editor externo após download do DOCX.
 
 ---
 
@@ -443,7 +443,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | Relatórios salvos como Google Docs nativos no Drive | Permite edição direta no Drive sem conversão |
 | Firestore é o banco ativo — SQLite é legado | Migração feita — nunca usar SQLite |
 | `dotenv.config()` sempre com path explícito `/app/backend/.env` | Sem path explícito falha em volumes Docker montados |
-| **Edição inline descontinuada** (Quill, parseBlocks, P1/P2/P3, botões ✓✗✎) | 18/05/2026: edição de RANs ocorre diretamente no Google Drive / Google Docs — não reimplementar no frontend |
+| **Edição inline descontinuada** (Quill, parseBlocks, P1/P2/P3, botões ✓✗✎) | 18/05/2026: profissional baixa DOCX, edita em editor externo (Word/LibreOffice/etc.) e reimporta — não reimplementar no frontend |
 | Block renderer inteiro em UMA linha no index.html | Babel standalone quebra silenciosamente com JSX multilinha em qualquer posição |
 | Rota `#settings` → SettingsPage; `#admin` → AdminPage no App Router | Sprint 3: rotas hash — ⚙️ no header da PatientListPage, sem BottomNav |
 | Navegação admin via Settings: `onAdmin` prop; admin → settings via `onBack` | Admin não tem ícone próprio na nav — acessível apenas por Settings |
@@ -455,7 +455,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | `gerarDocx` usa `_fonte`/`_tamanho` como estado de módulo (module-level mutable) | Monousuário — sem risco de corrida; `gerarDocxDeHtml` herda o estado da última geração (dívida técnica para multi-tenant na Fase 4) |
 | `gerarDocx(contentMd, nomeArquivo, userEmail)` — `userEmail` é o terceiro parâmetro opcional | Chamadas existentes sem o terceiro arg continuam válidas — fallback para defaults Arial/11pt |
 | Títulos de seção e tabela de identificação mantêm Arial hardcoded em E5 | Elementos estruturais de identidade visual; fonte configurável aplica-se apenas ao corpo do texto (processarInline + itemLista) |
-| `content_md` é a fonte de verdade no backend — Firestore + Drive | ReportPage exibe o conteúdo; edição é no Google Docs |
+| `content_md` é a fonte de verdade no backend — Firestore + Drive | ReportPage exibe o conteúdo; edição via download → editor externo → reimport |
 | `detectarInstrumento()` verifica `etdah` antes de `tde` | Evita falso positivo se nome do arquivo contiver ambas as strings |
 | `promptPorInstrumento()` retorna `null` para tipo desconhecido | `extractTextFromFile` usa `|| promptGenérico` como fallback — detecção nunca quebra extração |
 | Toast auto-dismiss | sempre `setTimeout(()=>setToast(null),3000)` após `setToast` de sucesso/erro — nunca toast persistente |
@@ -478,7 +478,7 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 
 ### O que NÃO Existe (não inventar)
 
-- **Sem edição inline de RAN** — DESCONTINUADO em 18/05/2026. Não reimplementar: Quill, parseBlocks para edição, botões ✓✗✎ por bloco, banner de edições, painel P3, PATCH content_md, `/feedback/batch`. Edição é feita diretamente no Google Drive / Google Docs.
+- **Sem edição inline de RAN** — DESCONTINUADO em 18/05/2026. Não reimplementar: Quill, parseBlocks para edição, botões ✓✗✎ por bloco, banner de edições, painel P3, PATCH content_md, `/feedback/batch`. Fluxo de edição: baixar DOCX → editar em editor externo (Word/LibreOffice/etc.) → reimportar o arquivo editado.
 - **Sem Motor de Feedback / Vector Search** — Sprint 4, não implementado
 - **Sem `feedback_queue`** — collection para Sprint 4, ainda não criada
 - **Sem SSE** — progresso de geração usa polling HTTP via collection `jobs`
