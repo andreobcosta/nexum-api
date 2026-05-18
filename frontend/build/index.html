@@ -1280,7 +1280,7 @@ function FilePreviewPage({patientId,fileId,onBack}){
 }
 
 /* ── PAGE: ADMIN ── */
-function AdminPage({onBack}){
+function AdminPage({onBack,onNavigate}){
   const[tab,setTab]=useState('prompt');
   const[toast,setToast_raw]=useState(null);const setToast=v=>{setToast_raw(v);if(v)setTimeout(()=>setToast_raw(null),3000);};
   const[promptData,setPromptData]=useState(null);
@@ -1292,11 +1292,14 @@ function AdminPage({onBack}){
   const[configJson,setConfigJson]=useState('');
   const[savingConfig,setSavingConfig]=useState(false);
   const[actLog,setActLog]=useState(null);const[cleaningJobs,setCleaningJobs]=useState(false);
+  const[ransHist,setRansHist]=useState(null);
 
+  const loadRansHist=()=>{apiFetch('/admin/reports-history').then(setRansHist).catch(e=>setToast({message:e.message,type:'error'}));};
   useEffect(()=>{
     if(tab==='prompt'&&!promptData){apiFetch('/admin/system-prompt').then(d=>{setPromptData(d);setEditPrompt(d.conteudo||'');}).catch(e=>setToast({message:e.message,type:'error'}));}
     if(tab==='config'&&!configJson){apiFetch('/admin/config').then(d=>setConfigJson(JSON.stringify(d,null,2))).catch(e=>setToast({message:e.message,type:'error'}));}
     if(tab==='log'&&!actLog){apiFetch('/admin/activity-log').then(setActLog).catch(e=>setToast({message:e.message,type:'error'}));}
+    if(tab==='rans'&&!ransHist){loadRansHist();}
   },[tab]);
 
   const savePrompt=async()=>{
@@ -1346,7 +1349,7 @@ function AdminPage({onBack}){
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:V.sand}}>
       <Header title="Administração" subtitle="Sistema" onBack={onBack}/>
       <div style={{display:'flex',background:V.white,borderBottom:'1px solid '+V.sand2,flexShrink:0}}>
-        {[{k:'prompt',lb:'🗒 Prompt'},{k:'config',lb:'⚙️ Motor'},{k:'log',lb:'📋 Log'}].map(({k,lb})=>(<button key={k} onClick={()=>setTab(k)} style={{padding:'12px 14px',background:'none',border:'none',borderBottom:tab===k?'2px solid '+V.forest:'2px solid transparent',color:tab===k?V.forest:V.ink3,fontSize:12,fontWeight:tab===k?600:400,cursor:'pointer',fontFamily:'inherit',flex:1}}>{lb}</button>))}
+        {[{k:'prompt',lb:'🗒 Prompt'},{k:'config',lb:'⚙️ Motor'},{k:'log',lb:'📋 Log'},{k:'rans',lb:'📊 RANs'}].map(({k,lb})=>(<button key={k} onClick={()=>setTab(k)} style={{padding:'12px 14px',background:'none',border:'none',borderBottom:tab===k?'2px solid '+V.forest:'2px solid transparent',color:tab===k?V.forest:V.ink3,fontSize:12,fontWeight:tab===k?600:400,cursor:'pointer',fontFamily:'inherit',flex:1}}>{lb}</button>))}
       </div>
       <div style={{flex:1,overflow:'auto',padding:16,paddingBottom:32}}>
 
@@ -1386,6 +1389,8 @@ function AdminPage({onBack}){
           </div>}
           </div>
         )}
+
+        {tab==='rans'&&(<div style={{display:'flex',flexDirection:'column',gap:10}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontSize:12,fontWeight:700,color:V.ink3,textTransform:'uppercase',letterSpacing:'0.06em'}}>Histórico de geração</span><button onClick={()=>{setRansHist(null);loadRansHist();}} style={{background:'none',border:'1px solid '+V.sand2,cursor:'pointer',fontSize:11,color:V.ink3,padding:'4px 10px',borderRadius:8,fontFamily:'inherit'}}>🔄 Atualizar</button></div>{!ransHist?<Spinner text="Carregando histórico..."/>:ransHist.length===0?<div style={{textAlign:'center',padding:40,color:V.ink3}}><div style={{fontSize:32,marginBottom:8}}>📊</div>Nenhum relatório gerado ainda</div>:<div style={{display:'flex',flexDirection:'column',gap:6}}>{ransHist.map(r=>(<div key={r.id} style={{background:V.white,borderRadius:12,padding:'12px 14px',border:'1px solid '+V.sand2}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:V.ink,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.patient_name}</div><div style={{fontSize:11,color:V.ink3,marginTop:3,display:'flex',gap:6,flexWrap:'wrap'}}>{r.version&&<span style={{background:V.sand2,borderRadius:4,padding:'1px 6px',fontWeight:600}}>{'v'+r.version}</span>}{r.generated_at&&<span>{new Date(r.generated_at).toLocaleString('pt-BR')}</span>}{r.score_qualidade!=null&&<span style={{color:r.score_qualidade>=30?V.forest:V.amber,fontWeight:600}}>{'Score '+r.score_qualidade}</span>}</div></div><Btn onClick={()=>onNavigate&&onNavigate('report',{reportId:r.id,patientId:r.patient_id})} variant="secondary" small>Ver</Btn></div></div>))}<div style={{textAlign:'center',padding:'6px 0',fontSize:11,color:V.ink4}}>{ransHist.length+' relatório'+(ransHist.length!==1?'s':'')+' gerado'+(ransHist.length!==1?'s':'')}</div></div>}</div>)}
 
       </div>
       <Toast message={toast?.message} type={toast?.type} onDismiss={()=>setToast(null)}/>
@@ -1437,7 +1442,7 @@ function App(){
     {page.name==='list'&&<PatientListPage onSelect={id=>nav('detail',{patientId:id})} onNew={()=>nav('new')} onImport={()=>nav('import')} onCosts={()=>nav('costs')} onSettings={()=>nav('settings')}/>}
     {page.name==='costs'&&<CostsPage onBack={()=>nav('list')}/>}
     {page.name==='settings'&&<SettingsPage onBack={()=>nav('list')} onAdmin={()=>nav('admin')}/>}
-    {page.name==='admin'&&<AdminPage onBack={()=>nav('settings')}/>}
+    {page.name==='admin'&&<AdminPage onBack={()=>nav('settings')} onNavigate={nav}/>}
     {page.name==='import'&&<ImportPage onBack={()=>nav('list')}/>}
     {page.name==='new'&&<NewPatientPage onBack={()=>nav('list')} onCreated={id=>nav('detail',{patientId:id})}/>}
     {page.name==='detail'&&<PatientDetailPage key={page.patientId+(page.reload||'')} patientId={page.patientId} onBack={()=>nav('list')} onCapture={(id,cat)=>nav('capture',{patientId:id,initialCat:cat})} onViewReport={(id,pid)=>nav('report',{reportId:id,patientId:pid})} onEdit={id=>nav('edit',{patientId:id})} onPreviewFile={f=>nav('filepreview',{patientId:page.patientId,fileId:f.id})}/>}

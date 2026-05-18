@@ -134,4 +134,48 @@ router.get('/activity-log', async (req, res) => {
   }
 });
 
+// GET /api/admin/reports-history
+router.get('/reports-history', async (req, res) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit) || 100, 200);
+
+    const snap = await db.collectionGroup('reports')
+      .orderBy('generated_at', 'desc')
+      .limit(limit)
+      .get();
+
+    if (snap.empty) return res.json([]);
+
+    // Extrai patient_ids únicos para batch fetch dos nomes
+    const patientIds = [...new Set(snap.docs.map(d => d.ref.parent.parent.id))];
+    const patientDocs = await Promise.all(patientIds.map(id => db.collection('patients').doc(id).get()));
+    const patientMap = {};
+    patientDocs.forEach(d => { if (d.exists) patientMap[d.id] = d.data().nome || d.data().full_name || 'Paciente'; });
+
+    const reports = snap.docs.map(d => {
+      const data = d.data();
+      const patientId = d.ref.parent.parent.id;
+      let score_qualidade = null;
+      try {
+        const meta = JSON.parse(data.ran_meta || '{}');
+        score_qualidade = meta?.revisao?.score_qualidade ?? null;
+      } catch {}
+      return {
+        id: d.id,
+        patient_id: patientId,
+        patient_name: patientMap[patientId] || 'Paciente não encontrado',
+        version: data.version || null,
+        generated_at: data.generated_at || null,
+        status: data.status || 'draft',
+        score_qualidade
+      };
+    });
+
+    res.json(reports);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar histórico de RANs', details: err.message });
+  }
+});
+
 module.exports = router;
