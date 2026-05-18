@@ -96,7 +96,7 @@ Sem linter ou framework de testes configurado.
 | routes/transcribe.js | Transcrição de áudio | OK |
 | routes/costs.js | Custos por RAN | OK |
 | routes/admin.js | 8 rotas admin — motor_config, system_prompts, system_prompts_history, activity_log, reports-history | Atualizado Sprint 3 (18/05/2026) |
-| routes/settings.js | 2 rotas settings — report_layout por email | Novo Sprint 3 |
+| routes/settings.js | 5 rotas settings — report_layout + padrões (listar/aprovar/rejeitar/restaurar) | Atualizado Sprint 4 |
 | routes/drive-webhook.js | Notificações Drive | OK |
 | services/claude.js | Pipeline 3 agentes + timeout/retry + caching | Atualizado B1/B3/B4 |
 | services/drive.js | Drive: upload, export, update | OK |
@@ -152,9 +152,10 @@ Pacientes/
 - `system_prompts` — versão ativa do system prompt: doc `active` com `{ conteudo, versao, updated_at, admin }`
 - `system_prompts_history` — versões arquivadas do system prompt (histórico imutável via `add()`)
 - `report_layout` — layout do relatório por usuário: doc ID = `req.user.email`, campos `{ fonte, tamanho, cores, cabecalho, logo_url }`
+- `clinic_settings/{email}/padroes` — padrões de estilo do profissional: `{ tipo, descricao, exemplo_original, exemplo_editado, instrumento, status (pendente/ativo/rejeitado), ocorrencias_consecutivas, ocorrencias_total, aprovado_em, rejeitado_em, fonte_relatorio }` — auto-aprovado após 3 ocorrências consecutivas
 
 **A criar nas próximas sprints:**
-- `feedback_queue`
+- `feedback_queue` — Sprint 4 G1-G4 cobriu o aprendizado via reimport; feedback_queue pode ser necessária para Phase 2 (SaaS multidisciplinar)
 
 ---
 
@@ -342,8 +343,13 @@ Substituir todas as ocorrências de `'Calibri'` por `'Arial'`.
 ### Sprint H — Infraestrutura Crítica ✅
 - [x] H3 ✓: Migrar autenticação Drive de OAuth2 pessoal (GOOGLE_REFRESH_TOKEN) para Google Service Account — elimina risco de expiração e indisponibilidade total (2b4dba7)
 
-### Sprint 4 — Aprendizado Contínuo (após Sprint 3 com feedbacks acumulados)
-- [ ] G1-G5 ~: Firestore Vector Search + Motor de Feedback Haiku + RAG + Busca Externa
+### Sprint 4 — Aprendizado Contínuo ✅
+- [x] G1 ✓: PatientDetailPage — botão "Importar DOCX editado" no dropdown "Atualizar RAN"
+- [x] G2 ✓: routes/reports.js — `POST /reports/:id/import-edited` — converte DOCX → Markdown via mammoth, salva nova versão com `sync_source:'import'`, dispara extração de padrões async
+- [x] G3 ✓: services/claude.js — `extrairPadroesDoRelatorio()` — Sonnet compara original × editado, extrai padrões de estilo/estrutura (máx 8/relatório), auto-aprova após 3 ocorrências consecutivas, armazena em `clinic_settings/{email}/padroes`
+- [x] G4 ✓: services/claude.js — `agentRedator()` injeta padrões `status=ativo` do profissional no prompt antes de gerar — RAG de estilo fechado
+- [x] Curadoria UI ✓: SettingsPage — aba de padrões com filtros pendente/ativo/rejeitado + aprovar/rejeitar/restaurar
+- [x] G5 ~~DESCARTADO~~: "Busca Externa" era placeholder sem definição — Claude Sonnet já tem conhecimento clínico treinado; busca real adicionaria custo/latência sem ganho proporcional. Revisar na Phase 2 (SaaS multidisciplinar)
 
 ---
 
@@ -473,6 +479,11 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 | Extrator genérico auto-adaptativo: ETAPA 1 (auto-identificação) + ETAPA 2 (extração estruturada) | Prompt específico por instrumento não escala para multiprofissionais; Claude identifica instrumento/área pelo conteúdo visual antes de extrair |
 | `detectarInstrumento()` reconhece "hanoi"/"hanói"/"torre" → `TORRE_HANOI` | Torre de Hanói tem dígitos manuscritos com alta taxa de confusão ("3"↔"8", "1"↔"7") — prompt específico previne alucinação de valores |
 | Redator DEVE criar sub-seções `##### Sessão N — [data]` para múltiplas aplicações do mesmo instrumento | system_prompt_ran.md seções 2.4 + 7: proibido mesclar dados de sessões distintas ou criar valores compostos — cada sessão tem seu próprio bloco |
+| Padrões de estilo armazenados em `clinic_settings/{email}/padroes` (não em `feedback_patterns`) | Por profissional, não por paciente — aprendizado é do estilo editorial da profissional, portável para qualquer paciente |
+| Auto-aprovação de padrão: 3 ocorrências consecutivas | Threshold calibrado para evitar padrões espúrios de uma edição isolada; padrões pendentes com 0 consecutivos após nova importação têm contador zerado |
+| `extrairPadroesDoRelatorio` usa Sonnet (não Haiku) | Haiku original no spec era insuficiente para distinguir padrões de estilo de mudanças específicas do paciente |
+| Padrões rejeitados são deletados após 30 dias | Cleanup automático em cada execução de `extrairPadroesDoRelatorio` — sem acúmulo indefinido |
+| G5 "Busca Externa" descartado | Claude Sonnet já tem conhecimento clínico treinado; busca real adicionaria latência/custo sem ganho proporcional para monousuário |
 
 ### Bugs Corrigidos — Não Reintroduzir
 
@@ -490,8 +501,8 @@ Itens `~` não precisam de teste manual antes de ir para produção. A validaç�
 ### O que NÃO Existe (não inventar)
 
 - **Sem edição inline de RAN** — DESCONTINUADO em 18/05/2026. Não reimplementar: Quill, parseBlocks para edição, botões ✓✗✎ por bloco, banner de edições, painel P3, PATCH content_md, `/feedback/batch`. Fluxo de edição: baixar DOCX → editar em editor externo (Word/LibreOffice/etc.) → reimportar o arquivo editado.
-- **Sem Motor de Feedback / Vector Search** — Sprint 4, não implementado
-- **Sem `feedback_queue`** — collection para Sprint 4, ainda não criada
+- ~~**Sem Motor de Feedback / Vector Search**~~ — **CONCLUÍDO** Sprint 4: motor de aprendizado via reimport implementado em `extrairPadroesDoRelatorio()` + RAG no Redator
+- **Sem `feedback_queue`** — pode ser necessária na Phase 2 (SaaS multidisciplinar); não implementada
 - **Sem SSE** — progresso de geração usa polling HTTP via collection `jobs`
 - **Sem testes automatizados** — validação por uso clínico real (Princípio do Feedback)
 - **Sem ambiente de staging** — apenas produção (Cloud Run) e local (`docker-compose`)
