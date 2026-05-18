@@ -9,3 +9,5 @@ node_modules/
 *.db-wal
 backend/nexum-service-account.json
 backend/package-lock.json
+desktop.ini
+Thumbs.db
