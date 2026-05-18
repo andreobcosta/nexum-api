@@ -97,23 +97,57 @@ ${base}`
 async function extractTextFromFile(contentBase64, mimeType, fileName = '') {
   const tipoInstrumento = detectarInstrumento(fileName);
   if (tipoInstrumento) console.log(`[PDF-Extractor] Instrumento detectado: ${tipoInstrumento} — usando prompt específico`);
-  const systemPrompt = promptPorInstrumento(tipoInstrumento) || `Você é um extrator especializado de dados clínicos de documentos neuropsicopedagógicos.
+  const PROMPT_GENERICO = `Você é um extrator especializado de documentos clínicos multiprofissionais (neuropsicopedagogia, fonoaudiologia, psicologia, terapia ocupacional, medicina e outras áreas da saúde).
 
-Sua função é extrair TODO o conteúdo relevante de PDFs e imagens de protocolos de avaliação, relatórios escolares, laudos médicos e outros documentos clínicos.
+ETAPA 1 — IDENTIFIQUE O DOCUMENTO
+Analise visualmente o documento e declare no início da extração:
+- Tipo: [protocolo de teste / ficha de observação / escala / laudo / relatório / parecer / outro]
+- Instrumento/Escala: [nome completo e sigla, se identificável pelo conteúdo] ou [não identificado]
+- Área profissional: [neuropsicopedagogia / fonoaudiologia / psicologia / medicina / terapia ocupacional / outro]
+- Data: DD/MM/AAAA | Avaliado: [nome] | Aplicador: [nome]
 
-Regras de extração:
-- Extraia TODO o texto visível, incluindo campos preenchidos, marcações, pontuações e observações manuscritas
-- Para protocolos de testes (ETDAH, CARS, TDE-2, etc.): extraia TODOS os itens, respostas marcadas, pontuações brutas, percentis e classificações
-- Para tabelas: reproduza a estrutura em formato de texto legível
-- Para campos manuscritos: transcreva o que conseguir ler, sinalize com [ILEGÍVEL] o que não conseguir
-- Para protocolos com escala Likert ou múltipla escolha: identifique qual opção foi marcada em cada item
-- Para checkboxes: indique APENAS os que estão marcados — nunca assuma que um checkbox está marcado sem evidência visual clara
-- Preserve números, datas e valores exatamente como aparecem — nunca arredonde, estime ou interpole valores numéricos
-- Para números manuscritos ambíguos (ex.: "3" que pode parecer "8", "5" que pode parecer "6"): sinalize com [VALOR DUVIDOSO — verificar documento original] em vez de escolher um valor
-- Se o documento estiver em branco ou vazio, informe: [DOCUMENTO SEM CONTEÚDO RELEVANTE]
-- Organize o conteúdo de forma lógica, mantendo a hierarquia do documento original
+ETAPA 2 — EXTRAIA COM ESTRUTURA PADRONIZADA
+
+Use sempre estas seções na saída, adaptando ao conteúdo encontrado:
+
+=== IDENTIFICAÇÃO ===
+[dados da Etapa 1 e campos de identificação presentes no documento]
+
+=== DADOS QUANTITATIVOS ===
+Regras obrigatórias para TODOS os campos numéricos (pontuações, tempos, movimentos, percentis, idades, escores, etc.):
+▸ Leia DÍGITO POR DÍGITO — nunca estime, arredonde ou interpole
+▸ Reporte: [campo] = [valor exato lido]
+▸ Se houver qualquer dúvida sobre um dígito: [campo] = [VALOR DUVIDOSO: poderia ser X ou Y — verificar original]
+▸ Confusões frequentes em escrita manuscrita: "3"↔"8", "5"↔"6"↔"9", "1"↔"7", "0"↔"6", "4"↔"9"
+▸ Nunca crie um valor "plausível" — se não conseguir ler com certeza, sinalize
+
+=== CHECKBOXES / OPÇÕES MARCADAS ===
+▸ Liste TODOS os itens/opções presentes e indique: [MARCADO] ou [não marcado]
+▸ Descreva brevemente a marca visual observada (X, ✓, círculo preenchido, risco, asterisco)
+▸ NUNCA assuma que um item está marcado sem evidência visual clara no documento
+
+=== RESPOSTAS POR ITEM ===
+Para escalas Likert, questões numeradas, protocolos item a item, inventários:
+▸ Liste cada item numerado com sua resposta/opção marcada
+▸ Se ilegível: [ILEGÍVEL]
+▸ Se parcialmente legível: transcreva o que conseguiu ler e sinalize [parcialmente ilegível — verificar original]
+
+=== RESULTADOS E PONTUAÇÕES ===
+Totais, subtotais, percentis, classificações, escores calculados, conclusões quantitativas presentes no documento.
+
+=== OBSERVAÇÕES E TEXTO LIVRE ===
+Transcrição literal de campos abertos, comentários manuscritos, anotações do aplicador, observações clínicas.
+NUNCA parafraseie ou normalize — transcreva exatamente o que está escrito, mesmo coloquial ou incompleto.
+
+=== AMBIGUIDADES DETECTADAS ===
+Lista de todos os campos onde houve dúvida na leitura:
+▸ [campo]: lido como "[valor A]" — pode ser "[valor B]" — [descrição do que dificultou a leitura]
+
+Se o documento estiver em branco ou sem conteúdo relevante: [DOCUMENTO SEM CONTEÚDO RELEVANTE]
 
 NÃO interprete os dados — apenas extraia e organize. A interpretação é feita por outro agente.`;
+
+  const systemPrompt = promptPorInstrumento(tipoInstrumento) || PROMPT_GENERICO;
 
   // Imagens usam tipo 'image', PDFs usam tipo 'document'
   const isImage = IMAGE_MIME_TYPES.includes(mimeType);
@@ -142,11 +176,15 @@ NÃO interprete os dados — apenas extraia e organize. A interpretação é fei
     return null; // Tipo não suportado
   }
 
+  const instrumentoHint = tipoInstrumento
+    ? `O nome do arquivo sugere que este é um documento do instrumento: ${tipoInstrumento}.`
+    : 'Identifique o instrumento ou tipo de documento pelo conteúdo visual.';
+
   const userContent = [
     contentBlock,
     {
       type: 'text',
-      text: `Extraia todo o conteúdo relevante deste arquivo: "${fileName}". Organize o conteúdo de forma estruturada e legível.`
+      text: `Extraia todo o conteúdo deste arquivo: "${fileName}".\n${instrumentoHint}\nSiga a estrutura padronizada de extração definida no system prompt.`
     }
   ];
 
