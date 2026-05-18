@@ -140,8 +140,9 @@ router.get('/reports-history', async (req, res) => {
     const db = getDb();
     const limit = Math.min(parseInt(req.query.limit) || 100, 200);
 
+    // collectionGroup sem orderBy — evita requisito de índice no Firestore
+    // ordenação feita em memória após fetch
     const snap = await db.collectionGroup('reports')
-      .orderBy('generated_at', 'desc')
       .limit(limit)
       .get();
 
@@ -153,24 +154,26 @@ router.get('/reports-history', async (req, res) => {
     const patientMap = {};
     patientDocs.forEach(d => { if (d.exists) patientMap[d.id] = d.data().nome || d.data().full_name || 'Paciente'; });
 
-    const reports = snap.docs.map(d => {
-      const data = d.data();
-      const patientId = d.ref.parent.parent.id;
-      let score_qualidade = null;
-      try {
-        const meta = JSON.parse(data.ran_meta || '{}');
-        score_qualidade = meta?.revisao?.score_qualidade ?? null;
-      } catch {}
-      return {
-        id: d.id,
-        patient_id: patientId,
-        patient_name: patientMap[patientId] || 'Paciente não encontrado',
-        version: data.version || null,
-        generated_at: data.generated_at || null,
-        status: data.status || 'draft',
-        score_qualidade
-      };
-    });
+    const reports = snap.docs
+      .map(d => {
+        const data = d.data();
+        const patientId = d.ref.parent.parent.id;
+        let score_qualidade = null;
+        try {
+          const meta = JSON.parse(data.ran_meta || '{}');
+          score_qualidade = meta?.revisao?.score_qualidade ?? null;
+        } catch {}
+        return {
+          id: d.id,
+          patient_id: patientId,
+          patient_name: patientMap[patientId] || 'Paciente não encontrado',
+          version: data.version || null,
+          generated_at: data.generated_at || null,
+          status: data.status || 'draft',
+          score_qualidade
+        };
+      })
+      .sort((a, b) => (b.generated_at || '').localeCompare(a.generated_at || ''));
 
     res.json(reports);
   } catch (err) {
