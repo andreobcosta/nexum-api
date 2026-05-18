@@ -228,18 +228,17 @@ function Confirm({title,message,onConfirm,onCancel,danger}){
 function PipelineProgress({stage,message,tipo,elapsed}){
   const isUpdate=tipo==='update';
   const stages=isUpdate?[
-    {key:'extracao',label:'Extração',icon:'📄',desc:'Lendo documentos'},
-    {key:'diff',label:'Diff',icon:'🔍',desc:'Identificando mudanças'},
-    {key:'redator',label:'Redator',icon:'✍️',desc:'Integrando dados'},
-    {key:'revisor',label:'Revisor',icon:'✅',desc:'Validando qualidade'}
+    {key:'prep',label:'Identificando novidades',icon:'🔍',desc:'Lendo novos documentos'},
+    {key:'redator',label:'Atualizando relatório',icon:'✍️',desc:'Integrando ao relatório'},
+    {key:'revisor',label:'Revisando',icon:'✅',desc:'Verificando qualidade'}
   ]:[
-    {key:'analitico',label:'Analítico',icon:'🔬',desc:'Lendo e cruzando dados'},
-    {key:'redator',label:'Redator',icon:'✍️',desc:'Redigindo seções'},
-    {key:'revisor',label:'Revisor',icon:'✅',desc:'Validando qualidade'}
+    {key:'analitico',label:'Lendo dados',icon:'📊',desc:'Analisando documentos'},
+    {key:'redator',label:'Escrevendo',icon:'✍️',desc:'Redigindo o relatório'},
+    {key:'revisor',label:'Revisando',icon:'✅',desc:'Verificando qualidade'}
   ];
   const idx=stages.findIndex(s=>s.key===stage);
-  const pct=idx<0?5:Math.round(((idx+1)/stages.length)*100);
-  const fmtElapsed=e=>e<60?e+'s':Math.floor(e/60)+'m '+(e%60)+'s';
+  const pct=idx<0?10:Math.round(((idx+1)/stages.length)*100);
+  const fmtElapsed=e=>e<60?e+'s':Math.floor(e/60)+'m '+(e%60<10?'0':'')+(e%60)+'s';
   return(
     <div style={{background:V.white,borderRadius:20,padding:24,border:'1px solid '+V.sand2,boxShadow:'0 4px 20px rgba(0,0,0,0.08)'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:4}}>
@@ -248,10 +247,10 @@ function PipelineProgress({stage,message,tipo,elapsed}){
       </div>
       <div style={{fontSize:12,color:V.ink3,textAlign:'center',marginBottom:20}}>{message||'Iniciando...'}</div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:0,marginBottom:20}}>
-        {stages.map((s,i)=>{const active=s.key===stage;const done=idx>i;return <React.Fragment key={s.key}><div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}><div style={{width:44,height:44,borderRadius:'50%',background:done?V.green:active?V.forest:'transparent',border:'2px solid '+(done||active?'transparent':V.sand3),display:'flex',alignItems:'center',justifyContent:'center',fontSize:active?22:18,animation:active?'agentPulse 1.5s ease-in-out infinite':'none',transition:'all .4s',boxShadow:active?'0 0 0 6px '+V.sage:'none'}}>{done?'✓':s.icon}</div><div style={{fontSize:11,fontWeight:done||active?600:400,color:done?V.green:active?V.forest:V.ink4,transition:'color .3s'}}>{s.label}</div><div style={{fontSize:10,color:active?V.forest:V.ink4,textAlign:'center',maxWidth:72,fontWeight:active?600:400}}>{s.desc}</div></div>{i<stages.length-1&&<div style={{height:2,flex:'0 0 20px',background:done?V.green:V.sand3,marginBottom:28,transition:'background .4s'}}/>}</React.Fragment>})}
+        {stages.map((s,i)=>{const active=s.key===stage;const done=idx>i;return <React.Fragment key={s.key}><div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}><div style={{width:44,height:44,borderRadius:'50%',background:done?V.green:active?V.forest:'transparent',border:'2px solid '+(done||active?'transparent':V.sand3),display:'flex',alignItems:'center',justifyContent:'center',fontSize:active?22:18,animation:active?'agentPulse 1.5s ease-in-out infinite':'none',transition:'all .4s',boxShadow:active?'0 0 0 6px '+V.sage:'none'}}>{done?'✓':s.icon}</div><div style={{fontSize:11,fontWeight:done||active?600:400,color:done?V.green:active?V.forest:V.ink4,transition:'color .3s'}}>{s.label}</div><div style={{fontSize:10,color:active?V.forest:V.ink4,textAlign:'center',maxWidth:80,fontWeight:active?600:400}}>{s.desc}</div></div>{i<stages.length-1&&<div style={{height:2,flex:'0 0 20px',background:done?V.green:V.sand3,marginBottom:28,transition:'background .4s'}}/>}</React.Fragment>})}
       </div>
       <div style={{height:5,background:V.sand2,borderRadius:3,overflow:'hidden'}}>
-        <div style={{height:'100%',background:V.forest,borderRadius:3,width:pct+'%',transition:'width 1s ease'}}/>
+        <div style={{height:'100%',background:V.forest,borderRadius:3,width:pct+'%',transition:'width 1.2s ease'}}/>
       </div>
       <div style={{display:'flex',justifyContent:'flex-end',marginTop:4}}><span style={{fontSize:11,color:V.ink4,fontWeight:600}}>{pct}%</span></div>
     </div>
@@ -547,21 +546,22 @@ function PatientDetailPage({patientId,onBack,onCapture,onViewReport,onEdit,onPre
   const loadSilent=useCallback(()=>{apiFetch('/patients/'+patientId).then(setPatient).catch(console.error);},[patientId]);
   useEffect(()=>{load()},[load]);
   useEffect(()=>{const allFiles=[].concat(...Object.values((patient&&patient.files)||{}));const tenMin=10*60*1000;const hasPending=allFiles.some(f=>f.eligibility_status==='pending'&&(Date.now()-new Date(f.created_at).getTime())<tenMin);if(!hasPending)return;const t=setInterval(loadSilent,4000);return()=>clearInterval(t);},[patient,loadSilent]);
+  useEffect(()=>{if(!patient||generating)return;if(!patient.pipeline_ativo)return;const stored=localStorage.getItem('nexum_job_'+patientId);if(!stored)return;const parts=stored.split('|');const jobId=parts[0];const tipo=parts[1]||'generate';const SMAP=tipo==='update'?SMAP_UPD:SMAP_GEN;setPipelineTipo(tipo);setGenerating(true);setPipelineStage(tipo==='update'?'prep':'analitico');setPipelineMsg('Retomando...');let n=0;const poll=setInterval(async()=>{if(++n>600){clearInterval(poll);localStorage.removeItem('nexum_job_'+patientId);setGenerating(false);setPipelineStage(null);setPipelineMsg('');setToast({message:'Timeout na geração',type:'error'});return;}try{const j=await apiFetch('/reports/job/'+jobId);const s=SMAP[j.etapa];if(s){setPipelineStage(s);setPipelineMsg(j.etapa);}if(j.status==='concluido'){clearInterval(poll);localStorage.removeItem('nexum_job_'+patientId);setGenerating(false);setPipelineStage('done');setPipelineMsg('');setToast({message:(j.tipo==='update'?'RAN atualizado!':'RAN gerado!')+' Score: '+(j.score_qualidade||'—')+'/100',type:'success'});setTimeout(()=>load(),1000);}else if(j.status==='erro'){clearInterval(poll);localStorage.removeItem('nexum_job_'+patientId);setGenerating(false);setPipelineStage(null);setPipelineMsg('');setToast({message:j.erro||'Erro',type:'error'});}}catch(pe){console.warn('[poll-resume]',pe.message);}},3000);return()=>clearInterval(poll);},[patient,patientId]);
 
+  const SMAP_GEN={'Agente Analítico — extraindo dados clínicos':'analitico','Agente Redator — redigindo relatório':'redator','Agente Revisor — validando qualidade':'revisor'};
+  const SMAP_UPD={'Extraindo conteúdo dos documentos':'prep','Agente Diff — identificando mudanças':'prep','Agente Redator — integrando novos dados':'redator','Agente Revisor — validando qualidade':'revisor'};
   const runPipeline=async(endpoint,successMsg,tipo)=>{
     const t=tipo||'generate';
-    setPipelineTipo(t);
-    setGenerating(true);setPipelineStage(t==='update'?'extracao':'analitico');setPipelineMsg('Iniciando...');
-    const SMAP_GEN={'Agente Analítico — extraindo dados clínicos':'analitico','Agente Redator — redigindo relatório':'redator','Agente Revisor — validando qualidade':'revisor'};
-    const SMAP_UPD={'Extraindo conteúdo dos documentos':'extracao','Agente Diff — identificando mudanças':'diff','Agente Redator — integrando novos dados':'redator','Agente Revisor — validando qualidade':'revisor'};
+    setPipelineTipo(t);setGenerating(true);setPipelineStage(t==='update'?'prep':'analitico');setPipelineMsg('Iniciando...');
     const SMAP=t==='update'?SMAP_UPD:SMAP_GEN;
     try{
       const r=await apiFetch(endpoint,{method:'POST',body:JSON.stringify({force:true})});
       if(!r.job_id){setPipelineStage('done');setToast({message:successMsg(r),type:'success'});setTimeout(()=>load(),1000);return;}
+      localStorage.setItem('nexum_job_'+patientId,r.job_id+'|'+t);
       const job=await new Promise((resolve,reject)=>{let n=0;const poll=setInterval(async()=>{if(++n>600){clearInterval(poll);reject(new Error('Timeout: geração excedeu 30 minutos'));return;}try{const j=await apiFetch('/reports/job/'+r.job_id);const s=SMAP[j.etapa];if(s){setPipelineStage(s);setPipelineMsg(j.etapa);}if(j.status==='concluido'){clearInterval(poll);resolve(j);return;}if(j.status==='erro'){clearInterval(poll);reject(new Error(j.erro||'Erro na geração'));return;}}catch(pe){console.warn('[poll]',pe.message);}},3000);});
       setPipelineStage('done');setToast({message:(job.tipo==='update'?'RAN atualizado!':'RAN gerado!')+' Score: '+(job.score_qualidade||'—')+'/100',type:'success'});if(job.arquivos_pulados&&job.arquivos_pulados.length>0)setLegadoPulados(job.arquivos_pulados);setTimeout(()=>load(),1000);
     }catch(e){setToast({message:e.message,type:'error'});}
-    finally{setGenerating(false);setPipelineStage(null);setPipelineTipo('generate');}
+    finally{localStorage.removeItem('nexum_job_'+patientId);setGenerating(false);setPipelineStage(null);setPipelineTipo('generate');}
   };
 
   const generateRAN=()=>runPipeline('/reports/generate/'+patientId,r=>'RAN gerado! Score: '+(r.score_qualidade||'—')+'/100','generate');
